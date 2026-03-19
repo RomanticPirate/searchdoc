@@ -1,0 +1,97 @@
+{
+  "version": 3,
+  "targets": {
+    "net8.0-windows7.0": {
+      "SearchDoc/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v8.0",
+        "compile": {
+          "bin/placeholder/SearchDoc.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/SearchDoc.dll": {}
+        },
+        "frameworkReferences": [
+          "Microsoft.WindowsDesktop.App.WindowsForms"
+        ]
+      }
+    }
+  },
+  "libraries": {
+    "SearchDoc/1.0.0": {
+      "type": "project",
+      "path": "../DocumentExplorerApp/DocumentExplorerApp.csproj",
+      "msbuildProject": "../DocumentExplorerApp/DocumentExplorerApp.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net8.0-windows7.0": [
+      "SearchDoc >= 1.0.0"
+    ]
+  },
+  "packageFolders": {
+    "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\.nuget\\packages": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\BenchmarkRunner.csproj",
+      "projectName": "BenchmarkRunner",
+      "projectPath": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\BenchmarkRunner.csproj",
+      "packagesPath": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\.nuget\\packages",
+      "outputPath": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\obj\\",
+      "projectStyle": "PackageReference",
+      "configFilePaths": [
+        "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\.appdata\\NuGet\\NuGet.Config"
+      ],
+      "originalTargetFrameworks": [
+        "net8.0-windows"
+      ],
+      "sources": {
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net8.0-windows7.0": {
+          "targetAlias": "net8.0-windows",
+          "projectReferences": {
+            "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\DocumentExplorerApp\\DocumentExplorerApp.csproj": {
+              "projectPath": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\DocumentExplorerApp\\DocumentExplorerApp.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      }
+    },
+    "frameworks": {
+      "net8.0-windows7.0": {
+        "targetAlias": "net8.0-windows",
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          }
+        },
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.404/PortableRuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}

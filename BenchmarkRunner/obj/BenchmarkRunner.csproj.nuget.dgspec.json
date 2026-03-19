@@ -1,0 +1,132 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\BenchmarkRunner.csproj": {}
+  },
+  "projects": {
+    "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\BenchmarkRunner.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\BenchmarkRunner.csproj",
+        "projectName": "BenchmarkRunner",
+        "projectPath": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\BenchmarkRunner.csproj",
+        "packagesPath": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\.nuget\\packages",
+        "outputPath": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\.appdata\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0-windows"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0-windows7.0": {
+            "targetAlias": "net8.0-windows",
+            "projectReferences": {
+              "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\DocumentExplorerApp\\DocumentExplorerApp.csproj": {
+                "projectPath": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\DocumentExplorerApp\\DocumentExplorerApp.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0-windows7.0": {
+          "targetAlias": "net8.0-windows",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.404/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\DocumentExplorerApp\\DocumentExplorerApp.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\DocumentExplorerApp\\DocumentExplorerApp.csproj",
+        "projectName": "SearchDoc",
+        "projectPath": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\DocumentExplorerApp\\DocumentExplorerApp.csproj",
+        "packagesPath": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\.nuget\\packages",
+        "outputPath": "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\DocumentExplorerApp\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\DocumentExplorerApp\\NuGet.Config",
+          "C:\\Users\\jwjeon\\Desktop\\AI_Lab\\문서 탐색기\\BenchmarkRunner\\.appdata\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0-windows"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0-windows7.0": {
+            "targetAlias": "net8.0-windows",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0-windows7.0": {
+          "targetAlias": "net8.0-windows",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            },
+            "Microsoft.WindowsDesktop.App.WindowsForms": {
+              "privateAssets": "none"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.404/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+.dotnet/
+.templateengine/
+BenchmarkRunner/.appdata/
+BenchmarkRunner/.dotnet/
+DocumentExplorerApp/.appdata/
+DocumentExplorerApp/.dotnet/
+DocumentExplorerApp/bin/
+DocumentExplorerApp/obj/
+실행파일/
+*.user
+*.log
+startup.log
