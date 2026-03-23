@@ -10,6 +10,13 @@
     <RootNamespace>SearchDoc</RootNamespace>
     <Product>찾아줘문서</Product>
     <ApplicationTitle>찾아줘문서</ApplicationTitle>
+    <ApplicationIcon>Assets\searchdoc.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\searchdoc.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
 </Project>

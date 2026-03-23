@@ -4,13 +4,12 @@ namespace DocumentExplorerApp;
 
 internal static class Program
 {
-    private static readonly string StartupLogPath = Path.Combine(AppContext.BaseDirectory, "startup.log");
-
     [STAThread]
     private static void Main()
     {
         try
         {
+            AppPaths.EnsureAppDataDirectory();
             Log("Main start");
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
@@ -43,7 +42,7 @@ internal static class Program
     {
         try
         {
-            File.AppendAllText(StartupLogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+            File.AppendAllText(AppPaths.StartupLogPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
         }
         catch
         {

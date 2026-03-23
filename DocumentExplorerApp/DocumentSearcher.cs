@@ -50,6 +50,164 @@ public sealed class DocumentSearcher
         };
     }
 
+    public DocumentIndexData BuildIndex(
+        string rootFolder,
+        IReadOnlyList<string> patterns,
+        IProgress<IndexingProgress> progress,
+        CancellationToken cancellationToken)
+    {
+        var files = FindFiles(rootFolder, patterns);
+        var entries = new List<DocumentIndexEntry>(files.Count);
+        progress.Report(new IndexingProgress(0, files.Count, string.Empty, false));
+
+        for (var i = 0; i < files.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var path = files[i];
+            var fileInfo = new FileInfo(path);
+            var extension = Path.GetExtension(path);
+            var status = "성공";
+            var content = string.Empty;
+
+            try
+            {
+                if (_extractors.TryGetValue(extension, out var extractor))
+                {
+                    content = extractor(path).Text;
+                }
+                else
+                {
+                    status = "실패";
+                    content = "본문 추출을 지원하지 않는 형식이야.";
+                }
+            }
+            catch (Exception ex)
+            {
+                status = "실패";
+                content = CreateFailureMessage(path, ex);
+            }
+
+            entries.Add(new DocumentIndexEntry
+            {
+                Path = path,
+                LastWriteUtcTicks = fileInfo.Exists ? fileInfo.LastWriteTimeUtc.Ticks : 0,
+                FileLength = fileInfo.Exists ? fileInfo.Length : 0,
+                Status = status,
+                Content = content,
+            });
+
+            progress.Report(new IndexingProgress(i + 1, files.Count, path, false));
+        }
+
+        progress.Report(new IndexingProgress(files.Count, files.Count, string.Empty, true));
+
+        return new DocumentIndexData
+        {
+            RootFolder = rootFolder,
+            Patterns = patterns.Select(static item => item.Trim()).Where(static item => !string.IsNullOrWhiteSpace(item)).ToList(),
+            IndexedAtUtc = DateTimeOffset.UtcNow,
+            Entries = entries,
+        };
+    }
+
+    public DocumentIndexData BuildOrUpdateIndex(
+        string rootFolder,
+        IReadOnlyList<string> patterns,
+        DocumentIndexData? existingIndex,
+        IProgress<IndexingProgress> progress,
+        CancellationToken cancellationToken)
+    {
+        var files = FindFiles(rootFolder, patterns);
+        var existingEntries = existingIndex?.Entries.ToDictionary(item => item.Path, StringComparer.OrdinalIgnoreCase)
+            ?? new Dictionary<string, DocumentIndexEntry>(StringComparer.OrdinalIgnoreCase);
+        var entries = new List<DocumentIndexEntry>(files.Count);
+
+        progress.Report(new IndexingProgress(0, files.Count, string.Empty, false));
+
+        for (var i = 0; i < files.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var path = files[i];
+            var fileInfo = new FileInfo(path);
+
+            if (existingEntries.TryGetValue(path, out var existingEntry) &&
+                existingEntry.LastWriteUtcTicks == fileInfo.LastWriteTimeUtc.Ticks &&
+                existingEntry.FileLength == fileInfo.Length)
+            {
+                entries.Add(existingEntry);
+            }
+            else
+            {
+                entries.Add(BuildIndexEntry(path, fileInfo));
+            }
+
+            progress.Report(new IndexingProgress(i + 1, files.Count, path, false));
+        }
+
+        progress.Report(new IndexingProgress(files.Count, files.Count, string.Empty, true));
+
+        return new DocumentIndexData
+        {
+            RootFolder = rootFolder,
+            Patterns = patterns.Select(static item => item.Trim()).Where(static item => !string.IsNullOrWhiteSpace(item)).ToList(),
+            IndexedAtUtc = DateTimeOffset.UtcNow,
+            Entries = entries,
+        };
+    }
+
+    public void Search(
+        DocumentIndexData index,
+        string keyword,
+        SearchTarget searchTarget,
+        IProgress<SearchProgress> progress,
+        CancellationToken cancellationToken)
+    {
+        var entries = index.Entries;
+        progress.Report(new SearchProgress(0, entries.Count, string.Empty, null, false));
+
+        var trimmedKeyword = keyword.Trim();
+
+        for (var i = 0; i < entries.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var entry = entries[i];
+            SearchResult? result = null;
+            var fileName = Path.GetFileName(entry.Path);
+
+            if (searchTarget == SearchTarget.FileName)
+            {
+                if (string.IsNullOrWhiteSpace(trimmedKeyword) ||
+                    fileName.Contains(trimmedKeyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    var snippet = entry.Status == "실패"
+                        ? entry.Content
+                        : $"파일명 일치: {fileName}{Environment.NewLine}경로: {Path.GetDirectoryName(entry.Path)}";
+                    result = new SearchResult(entry.Path, snippet, entry.Status);
+                }
+
+                progress.Report(new SearchProgress(i + 1, entries.Count, entry.Path, result, false));
+                continue;
+            }
+
+            if (entry.Status == "실패")
+            {
+                result = new SearchResult(entry.Path, entry.Content, "실패");
+            }
+            else if (string.IsNullOrWhiteSpace(trimmedKeyword) ||
+                     entry.Content.Contains(trimmedKeyword, StringComparison.OrdinalIgnoreCase))
+            {
+                result = new SearchResult(
+                    entry.Path,
+                    CreateSnippet(entry.Content, trimmedKeyword),
+                    "성공");
+            }
+
+            progress.Report(new SearchProgress(i + 1, entries.Count, entry.Path, result, false));
+        }
+
+        progress.Report(new SearchProgress(entries.Count, entries.Count, string.Empty, null, true));
+    }
+
     public void Search(
         string rootFolder,
         string keyword,
@@ -101,7 +259,7 @@ public sealed class DocumentSearcher
                 }
                 catch (Exception ex)
                 {
-                    result = new SearchResult(path, ex.Message, "실패");
+                    result = new SearchResult(path, CreateFailureMessage(path, ex), "실패");
                 }
             }
 
@@ -109,6 +267,69 @@ public sealed class DocumentSearcher
         }
 
         progress.Report(new SearchProgress(files.Count, files.Count, string.Empty, null, true));
+    }
+
+    private static string CreateFailureMessage(string path, Exception ex)
+    {
+        var extension = Path.GetExtension(path).ToLowerInvariant();
+        var message = ex.Message;
+
+        if (extension is ".doc" or ".xls" or ".ppt" or ".hwp")
+        {
+            return "본문 추출에 실패했어.\n해당 형식을 여는 프로그램이 설치돼 있는지 먼저 확인해줘.";
+        }
+
+        if (extension is ".txt" or ".md" or ".csv" or ".tsv" or ".json" or ".xml" or ".log" or ".ini" or ".cfg" or ".yaml" or ".yml" or ".html" or ".htm" or ".css" or ".js" or ".ts" or ".py" or ".cs" or ".java" or ".sql")
+        {
+            return "텍스트 파일을 읽지 못했어.\n인코딩이 다르거나 파일이 손상됐을 수 있어.";
+        }
+
+        if (message.Contains("workbook.xml", StringComparison.OrdinalIgnoreCase))
+        {
+            return "엑셀 파일 구조를 읽지 못했어.\n파일이 손상됐거나 내부 형식이 올바르지 않을 수 있어.";
+        }
+
+        if (message.Contains("Open", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("COM", StringComparison.OrdinalIgnoreCase))
+        {
+            return "문서를 여는 중 오류가 났어.\n파일이 잠겨 있거나 해당 프로그램 자동화에 실패했을 수 있어.";
+        }
+
+        return "본문 추출에 실패했어.\n파일이 잠겨 있거나 손상됐을 수 있어.";
+    }
+
+    private DocumentIndexEntry BuildIndexEntry(string path, FileInfo fileInfo)
+    {
+        var extension = Path.GetExtension(path);
+        var status = "성공";
+        var content = string.Empty;
+
+        try
+        {
+            if (_extractors.TryGetValue(extension, out var extractor))
+            {
+                content = extractor(path).Text;
+            }
+            else
+            {
+                status = "실패";
+                content = "본문 추출을 지원하지 않는 형식이야.";
+            }
+        }
+        catch (Exception ex)
+        {
+            status = "실패";
+            content = CreateFailureMessage(path, ex);
+        }
+
+        return new DocumentIndexEntry
+        {
+            Path = path,
+            LastWriteUtcTicks = fileInfo.Exists ? fileInfo.LastWriteTimeUtc.Ticks : 0,
+            FileLength = fileInfo.Exists ? fileInfo.Length : 0,
+            Status = status,
+            Content = content,
+        };
     }
 
     private static List<string> FindFiles(string rootFolder, IReadOnlyList<string> patterns)
