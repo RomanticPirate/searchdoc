@@ -7,6 +7,10 @@ namespace DocumentExplorerApp;
 
 public sealed class MainForm : Form
 {
+    private const int TopRowHeight = 42;
+    private const int TopControlHeight = 32;
+    private const int TopVerticalMargin = 5;
+
     private static readonly Color AppBackgroundColor = Color.FromArgb(255, 247, 242);
     private static readonly Color SurfaceColor = Color.FromArgb(255, 252, 248);
     private static readonly Color SurfaceAccentColor = Color.FromArgb(255, 240, 231);
@@ -27,7 +31,10 @@ public sealed class MainForm : Form
     private readonly DocumentSearcher _searcher = new();
     private readonly BindingList<SearchResult> _results = [];
     private readonly AppSettings _settings;
-    private readonly Bitmap _failureIcon = SystemIcons.Warning.ToBitmap();
+    private readonly Bitmap _failureIcon = CreateFailureIcon();
+    private readonly Bitmap _successIcon = CreateSuccessIcon();
+    private readonly ToolTip _paneToolTip = CreatePaneToolTip();
+    private readonly Image _infoIconImage = CreateInfoIcon();
     private DocumentIndexData? _currentIndex;
 
     private TextBox _folderTextBox = null!;
@@ -35,8 +42,7 @@ public sealed class MainForm : Form
     private TextBox _patternTextBox = null!;
     private Button _browseFolderButton = null!;
     private Button _searchButton = null!;
-    private Button _fileNameModeButton = null!;
-    private Button _contentModeButton = null!;
+    private SearchTargetToggle _searchTargetToggle = null!;
     private Button _resetPatternButton = null!;
     private Label _statusLabel = null!;
     private DataGridView _resultsGrid = null!;
@@ -48,7 +54,6 @@ public sealed class MainForm : Form
     private Button _previewPreviousButton = null!;
     private Button _previewNextButton = null!;
     private Button _previewExpandButton = null!;
-    private Panel _previewMarkerPanel = null!;
     private SplitContainer _mainSplit = null!;
 
     private CancellationTokenSource? _searchCts;
@@ -57,9 +62,6 @@ public sealed class MainForm : Form
     private SearchResult? _selectedPreviewResult;
     private int _selectedPreviewMatchIndex;
     private bool _previewShowFullDocument;
-    private int _focusedPreviewCharIndex = -1;
-    private int _focusedPreviewMarkerY = -1;
-
     public MainForm()
     {
         Program.Log("MainForm ctor start");
@@ -108,9 +110,9 @@ public sealed class MainForm : Form
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110F));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 176F));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(root);
@@ -125,51 +127,66 @@ public sealed class MainForm : Form
         root.Controls.Add(_browseFolderButton, 2, 0);
         Program.Log("Top area created");
 
-        root.Controls.Add(CreateFieldLabel("검색어"), 0, 1);
+        root.Controls.Add(CreateFieldLabel("확장자 패턴"), 0, 1);
+        _patternTextBox = CreateInputTextBox();
+        root.Controls.Add(CreateInputHost(_patternTextBox), 1, 1);
+        _resetPatternButton = new Button { Text = "확장자 초기화", Anchor = AnchorStyles.Left | AnchorStyles.Right };
+        StyleActionButton(_resetPatternButton);
+        _resetPatternButton.Click += (_, _) => _patternTextBox.Text = DocumentSearcher.DefaultPatterns;
+        root.Controls.Add(_resetPatternButton, 2, 1);
+        Program.Log("Pattern area created");
+
+        root.Controls.Add(CreateFieldLabel("검색어"), 0, 2);
         var searchTargetPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 4,
+            ColumnCount = 2,
             RowCount = 1,
             Margin = new Padding(0),
             Padding = new Padding(0),
             BackColor = AppBackgroundColor,
         };
-        searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        searchTargetPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+        searchTargetPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
+
+        var searchInputPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+            BackColor = AppBackgroundColor,
+        };
+        searchInputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        searchInputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 172F));
+        searchInputPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
 
         _keywordTextBox = CreateInputTextBox();
         _keywordTextBox.KeyDown += KeywordTextBoxOnKeyDown;
-        searchTargetPanel.Controls.Add(CreateInputHost(_keywordTextBox), 0, 0);
-        _searchButton = new Button { Text = "검색", Width = 86, Margin = new Padding(8, 0, 0, 0), Anchor = AnchorStyles.Left };
+        var keywordInputHost = CreateInputHost(_keywordTextBox);
+        keywordInputHost.Dock = DockStyle.Fill;
+        searchInputPanel.Controls.Add(keywordInputHost, 0, 0);
+        _searchButton = new Button { Text = "검색", Width = 172, Anchor = AnchorStyles.Left };
         StyleActionButton(_searchButton);
+        _searchButton.Font = new Font("Malgun Gothic", 12F, FontStyle.Bold, GraphicsUnit.Point);
+        _searchButton.Margin = new Padding(0, TopVerticalMargin, 0, TopVerticalMargin);
         _searchButton.Click += async (_, _) => await RequestSearchAsync();
-        searchTargetPanel.Controls.Add(_searchButton, 1, 0);
+        searchInputPanel.Controls.Add(_searchButton, 1, 0);
+        searchTargetPanel.Controls.Add(searchInputPanel, 0, 0);
 
-        _fileNameModeButton = new Button { Text = "파일명", Width = 92, Margin = new Padding(18, 0, 0, 0), Anchor = AnchorStyles.Left };
-        StyleModeButton(_fileNameModeButton);
-        _fileNameModeButton.Click += (_, _) => SetSearchTarget(SearchTarget.FileName);
-        searchTargetPanel.Controls.Add(_fileNameModeButton, 2, 0);
-
-        _contentModeButton = new Button { Text = "문서 내용", Width = 116, Margin = new Padding(0, 0, 0, 0), Anchor = AnchorStyles.Left };
-        StyleModeButton(_contentModeButton);
-        _contentModeButton.Click += (_, _) => SetSearchTarget(SearchTarget.DocumentContent);
-        searchTargetPanel.Controls.Add(_contentModeButton, 3, 0);
+        _searchTargetToggle = new SearchTargetToggle
+        {
+            Anchor = AnchorStyles.Right,
+            AutoSize = false,
+            Margin = new Padding(16, 9, 0, 9),
+        };
+        _searchTargetToggle.SelectedTargetChanged += (_, target) => SetSearchTarget(target);
+        searchTargetPanel.Controls.Add(_searchTargetToggle, 1, 0);
 
         root.SetColumnSpan(searchTargetPanel, 2);
-        root.Controls.Add(searchTargetPanel, 1, 1);
-
-        root.Controls.Add(CreateFieldLabel("확장자 패턴"), 0, 2);
-        _patternTextBox = CreateInputTextBox();
-        root.Controls.Add(CreateInputHost(_patternTextBox), 1, 2);
-        _resetPatternButton = new Button { Text = "확장자 초기화", Anchor = AnchorStyles.Left | AnchorStyles.Right };
-        StyleActionButton(_resetPatternButton);
-        _resetPatternButton.Click += (_, _) => _patternTextBox.Text = DocumentSearcher.DefaultPatterns;
-        root.Controls.Add(_resetPatternButton, 2, 2);
-        Program.Log("Pattern area created");
+        root.Controls.Add(searchTargetPanel, 1, 2);
 
         _statusLabel = new Label
         {
@@ -214,7 +231,7 @@ public sealed class MainForm : Form
         };
         Program.Log("Split created");
 
-        var leftPanel = BuildPane("검색 결과", out var leftContent);
+        var leftPanel = BuildPane("검색 결과", "파일 리스트를 더블 클릭하면 파일이 열립니다.", out var leftContent);
         _mainSplit.Panel1.Controls.Add(leftPanel);
         Program.Log("Left pane created");
 
@@ -254,9 +271,15 @@ public sealed class MainForm : Form
         {
             Name = "StatusIcon",
             HeaderText = "",
-            Width = 34,
-            ImageLayout = DataGridViewImageCellLayout.Zoom,
+            Width = 22,
+            ImageLayout = DataGridViewImageCellLayout.Normal,
             ValuesAreIcons = false,
+            DefaultCellStyle = new DataGridViewCellStyle
+            {
+                Alignment = DataGridViewContentAlignment.MiddleCenter,
+                NullValue = null,
+                Padding = new Padding(0),
+            },
         });
         _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
@@ -287,7 +310,7 @@ public sealed class MainForm : Form
         leftContent.Controls.Add(_resultsGrid);
         Program.Log("Grid created");
 
-        var rightPanel = BuildPane("미리보기", out var rightContent);
+        var rightPanel = BuildPane("미리보기", "· 문서명을 클릭하면 해당 파일이 열립니다.\n· 경로를 클릭하면 해당 경로가 열립니다.", out var rightContent);
         _mainSplit.Panel2.Controls.Add(rightPanel);
         Program.Log("Right pane created");
 
@@ -295,7 +318,7 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             BackColor = SurfaceColor,
-            Padding = new Padding(14, 12, 14, 12),
+            Padding = new Padding(0),
         };
         rightContent.Controls.Add(previewShell);
 
@@ -303,15 +326,36 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
-            BackColor = Color.White,
-            Padding = new Padding(22, 20, 22, 16),
+            RowCount = 2,
+            BackColor = SurfaceColor,
+            Padding = new Padding(18, 18, 18, 0),
             Margin = new Padding(0),
         };
-        previewCard.RowStyles.Add(new RowStyle(SizeType.Absolute, 58F));
         previewCard.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        previewCard.RowStyles.Add(new RowStyle(SizeType.Absolute, 52F));
+        previewCard.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
         previewShell.Controls.Add(previewCard);
+
+        var previewContentPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = SurfaceAccentColor,
+            Margin = new Padding(0),
+            Padding = new Padding(1),
+        };
+        previewCard.Controls.Add(previewContentPanel, 0, 0);
+
+        var previewContentInner = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            BackColor = Color.White,
+            Margin = new Padding(0),
+            Padding = new Padding(18, 18, 18, 18),
+        };
+        previewContentInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 58F));
+        previewContentInner.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        previewContentPanel.Controls.Add(previewContentInner);
 
         var previewHeaderPanel = new TableLayoutPanel
         {
@@ -324,7 +368,7 @@ public sealed class MainForm : Form
         };
         previewHeaderPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
         previewHeaderPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
-        previewCard.Controls.Add(previewHeaderPanel, 0, 0);
+        previewContentInner.Controls.Add(previewHeaderPanel, 0, 0);
 
         _previewTitleLabel = new LinkLabel
         {
@@ -354,27 +398,23 @@ public sealed class MainForm : Form
         _previewMetaLabel.LinkClicked += PreviewMetaLabelOnLinkClicked;
         previewHeaderPanel.Controls.Add(_previewMetaLabel, 0, 1);
 
-        var previewBodyPanel = new TableLayoutPanel
+        var previewBodyPanel = new Panel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 1,
+            BackColor = SurfaceAccentColor,
+            Margin = new Padding(0),
+            Padding = new Padding(1),
+        };
+        previewContentInner.Controls.Add(previewBodyPanel, 0, 1);
+
+        var previewBodyInnerPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
             BackColor = Color.White,
             Margin = new Padding(0),
             Padding = new Padding(0),
         };
-        previewBodyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24F));
-        previewBodyPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        previewCard.Controls.Add(previewBodyPanel, 0, 1);
-
-        _previewMarkerPanel = new Panel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = Color.White,
-            Margin = new Padding(0, 0, 8, 0),
-        };
-        _previewMarkerPanel.Paint += PreviewMarkerPanelOnPaint;
-        previewBodyPanel.Controls.Add(_previewMarkerPanel, 0, 0);
+        previewBodyPanel.Controls.Add(previewBodyInnerPanel);
 
         _previewBox = new RichTextBox
         {
@@ -386,25 +426,22 @@ public sealed class MainForm : Form
             HideSelection = true,
             BackColor = Color.White,
             ForeColor = TextColor,
-            ScrollBars = RichTextBoxScrollBars.Vertical,
+            ScrollBars = RichTextBoxScrollBars.Both,
+            WordWrap = false,
         };
-        _previewBox.Resize += (_, _) => RefreshFocusedPreviewMarker();
-        _previewBox.MouseWheel += (_, _) => RefreshFocusedPreviewMarker();
-        _previewBox.VScroll += (_, _) => RefreshFocusedPreviewMarker();
-        _previewBox.TextChanged += (_, _) => RefreshFocusedPreviewMarker();
-        previewBodyPanel.Controls.Add(_previewBox, 1, 0);
+        previewBodyInnerPanel.Controls.Add(_previewBox);
 
         var previewNavPanel = new Panel
         {
             Dock = DockStyle.Fill,
             Margin = new Padding(0),
-            BackColor = Color.White,
-            Padding = new Padding(0, 8, 0, 0),
+            BackColor = SurfaceColor,
+            Padding = new Padding(0),
         };
 
         var previewNavGroup = new TableLayoutPanel
         {
-            Anchor = AnchorStyles.Right | AnchorStyles.Top,
+            Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 4,
@@ -423,7 +460,7 @@ public sealed class MainForm : Form
         {
             previewNavGroup.Location = new Point(
                 Math.Max(0, previewNavPanel.ClientSize.Width - previewNavGroup.Width),
-            0);
+                Math.Max(0, previewNavPanel.ClientSize.Height - previewNavGroup.Height));
         };
 
         _previewExpandButton = new Button { Text = "전체 보기", Width = 102, Height = 34, Margin = new Padding(0, 0, 12, 0), Visible = false };
@@ -450,16 +487,16 @@ public sealed class MainForm : Form
         _previewPreviousButton.Click += (_, _) => MovePreviewMatch(-1);
         previewNavGroup.Controls.Add(_previewPreviousButton, 2, 0);
 
-        _previewNextButton = new Button { Text = "다음(D)", Width = 96, Height = 34, Margin = new Padding(0) };
+        _previewNextButton = new Button { Text = "다음(S)", Width = 96, Height = 34, Margin = new Padding(0) };
         StylePreviewNavButton(_previewNextButton);
         _previewNextButton.Click += (_, _) => MovePreviewMatch(1);
         previewNavGroup.Controls.Add(_previewNextButton, 3, 0);
 
-        previewCard.Controls.Add(previewNavPanel, 0, 2);
+        previewCard.Controls.Add(previewNavPanel, 0, 1);
         Program.Log("Preview box created");
     }
 
-    private static Panel BuildPane(string title, out Panel contentPanel)
+    private Panel BuildPane(string title, string tooltipText, out Panel contentPanel)
     {
         var panel = new Panel
         {
@@ -469,18 +506,53 @@ public sealed class MainForm : Form
             Margin = new Padding(0, 0, 10, 0),
         };
 
+        var headerPanel = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 34,
+            Margin = new Padding(0),
+            BackColor = SurfaceAccentColor,
+            Padding = new Padding(12, 0, 10, 0),
+        };
+
+        var headerContent = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Left,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = new Padding(0),
+            Padding = new Padding(0, 7, 0, 0),
+            BackColor = SurfaceAccentColor,
+        };
+
         var titleLabel = new Label
         {
             Text = title,
-            Dock = DockStyle.Top,
-            Height = 34,
+            AutoSize = true,
             TextAlign = ContentAlignment.MiddleLeft,
-            Margin = new Padding(0),
+            Margin = new Padding(0, 0, 4, 0),
             BackColor = SurfaceAccentColor,
             ForeColor = AccentColor,
             Font = new Font("Malgun Gothic", 10F, FontStyle.Bold, GraphicsUnit.Point),
-            Padding = new Padding(12, 0, 0, 0),
         };
+
+        var infoIcon = new PictureBox
+        {
+            Width = 16,
+            Height = 16,
+            Margin = new Padding(0, 2, 0, 0),
+            Padding = new Padding(0),
+            Image = _infoIconImage,
+            SizeMode = PictureBoxSizeMode.Zoom,
+            Cursor = Cursors.Hand,
+        };
+
+        headerContent.Controls.Add(titleLabel);
+        headerContent.Controls.Add(infoIcon);
+        headerPanel.Controls.Add(headerContent);
+        _paneToolTip.SetToolTip(infoIcon, tooltipText);
 
         contentPanel = new Panel
         {
@@ -491,8 +563,84 @@ public sealed class MainForm : Form
         };
 
         panel.Controls.Add(contentPanel);
-        panel.Controls.Add(titleLabel);
+        panel.Controls.Add(headerPanel);
         return panel;
+    }
+
+    private static ToolTip CreatePaneToolTip()
+    {
+        return new ToolTip
+        {
+            AutomaticDelay = 1,
+            InitialDelay = 1,
+            ReshowDelay = 1,
+            AutoPopDelay = 20000,
+            ShowAlways = true,
+            UseAnimation = false,
+            UseFading = false,
+        };
+    }
+
+    private static Bitmap CreateInfoIcon()
+    {
+        var bitmap = new Bitmap(16, 16);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.Clear(Color.Transparent);
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+
+        using var fillBrush = new SolidBrush(Color.FromArgb(255, 250, 246));
+        using var borderPen = new Pen(Color.FromArgb(205, 158, 137), 1.2F);
+        graphics.FillEllipse(fillBrush, 1.5F, 1.5F, 13F, 13F);
+        graphics.DrawEllipse(borderPen, 1.5F, 1.5F, 13F, 13F);
+
+        using var stemPen = new Pen(AccentColor, 1.6F)
+        {
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            EndCap = System.Drawing.Drawing2D.LineCap.Round,
+        };
+        using var dotBrush = new SolidBrush(AccentColor);
+        graphics.FillEllipse(dotBrush, 7F, 3.5F, 2F, 2F);
+        graphics.DrawLine(stemPen, 8F, 7F, 8F, 11F);
+
+        return bitmap;
+    }
+
+    private static Bitmap CreateSuccessIcon()
+    {
+        var bitmap = new Bitmap(12, 12);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.Clear(Color.Transparent);
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+        using var fillBrush = new SolidBrush(Color.FromArgb(44, 163, 76));
+        graphics.FillEllipse(fillBrush, 0.5F, 0.5F, 11F, 11F);
+
+        using var pen = new Pen(Color.White, 1.6F)
+        {
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            EndCap = System.Drawing.Drawing2D.LineCap.Round,
+        };
+        graphics.DrawLines(pen,
+        [
+            new PointF(3.2F, 6.1F),
+            new PointF(5.1F, 8.1F),
+            new PointF(8.7F, 3.8F),
+        ]);
+
+        return bitmap;
+    }
+
+    private static Bitmap CreateFailureIcon()
+    {
+        using var source = SystemIcons.Warning.ToBitmap();
+        var bitmap = new Bitmap(12, 12);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.Clear(Color.Transparent);
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+        graphics.DrawImage(source, new Rectangle(0, 0, 12, 12));
+        return bitmap;
     }
 
     private void ApplyMainSplitRatio()
@@ -539,7 +687,7 @@ public sealed class MainForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
-        if (keyData is Keys.A or Keys.D)
+        if (keyData is Keys.A or Keys.S)
         {
             var focusedControl = ActiveControl;
             if (focusedControl is TextBoxBase)
@@ -586,8 +734,8 @@ public sealed class MainForm : Form
 
         _folderTextBox.Text = dialog.SelectedPath;
         SaveLastFolder(dialog.SelectedPath);
-        await EnsureIndexReadyAsync(forceRebuild: false);
-        if (_currentIndex is not null)
+        var indexed = await EnsureIndexReadyAsync(forceRebuild: false);
+        if (indexed && _currentIndex is not null)
         {
             _statusLabel.Text = $"색인 완료: {_currentIndex.Entries.Count}개 파일";
         }
@@ -604,6 +752,11 @@ public sealed class MainForm : Form
     private bool IsCurrentIndexValid(string rootFolder, IReadOnlyList<string> patterns)
     {
         if (_currentIndex is null)
+        {
+            return false;
+        }
+
+        if (_currentIndex.FormatVersion != DocumentIndexData.CurrentFormatVersion)
         {
             return false;
         }
@@ -629,25 +782,34 @@ public sealed class MainForm : Form
         return true;
     }
 
-    private async Task EnsureIndexReadyAsync(bool forceRebuild)
+    private async Task<bool> EnsureIndexReadyAsync(bool forceRebuild)
     {
         var rootFolder = _folderTextBox.Text.Trim();
         var patterns = GetCurrentPatterns();
 
         if (!Directory.Exists(rootFolder) || patterns.Length == 0)
         {
-            return;
+            return false;
         }
 
         if (!forceRebuild && IsCurrentIndexValid(rootFolder, patterns))
         {
-            return;
+            return true;
         }
 
         SetBusyState(true);
         Enabled = false;
 
         using var popup = new IndexingProgressForm();
+        using var indexingCts = new CancellationTokenSource();
+        var canceled = false;
+        popup.CancelRequested += (_, _) =>
+        {
+            canceled = true;
+            popup.SetCancelState(true);
+            _statusLabel.Text = "색인을 취소하는 중...";
+            indexingCts.Cancel();
+        };
         popup.ShowCenteredOver(this);
         popup.UpdateProgress(new IndexingProgress(0, 1, string.Empty, false));
         popup.Refresh();
@@ -682,16 +844,26 @@ public sealed class MainForm : Form
                 patterns,
                 forceRebuild ? null : _currentIndex,
                 progress,
-                CancellationToken.None));
+                indexingCts.Token));
 
             DocumentIndexStore.Save(_currentIndex);
             _statusLabel.Text = $"색인 완료: {_currentIndex.Entries.Count}개 파일";
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            _statusLabel.Text = "색인을 취소했어.";
+            return false;
         }
         finally
         {
             Enabled = true;
             popup.Close();
             SetBusyState(false);
+            if (canceled)
+            {
+                _statusLabel.Text = "색인을 취소했어.";
+            }
         }
     }
 
@@ -713,7 +885,12 @@ public sealed class MainForm : Form
         }
 
         SaveLastFolder(rootFolder);
-        await EnsureIndexReadyAsync(forceRebuild: !IsCurrentIndexValid(rootFolder, patterns));
+        var indexed = await EnsureIndexReadyAsync(forceRebuild: !IsCurrentIndexValid(rootFolder, patterns));
+        if (!indexed)
+        {
+            return;
+        }
+
         if (_currentIndex is not null)
         {
             _statusLabel.Text = $"색인 완료: {_currentIndex.Entries.Count}개 파일";
@@ -791,8 +968,7 @@ public sealed class MainForm : Form
         _browseFolderButton.Enabled = !busy;
         _searchButton.Enabled = !busy;
         _resetPatternButton.Enabled = !busy;
-        _fileNameModeButton.Enabled = !busy;
-        _contentModeButton.Enabled = !busy;
+        _searchTargetToggle.Enabled = !busy;
 
         if (busy)
         {
@@ -843,7 +1019,7 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             BackColor = SurfaceColor,
-            Margin = new Padding(0, 6, 0, 6),
+            Margin = new Padding(0, TopVerticalMargin, 0, TopVerticalMargin),
             BorderStyle = BorderStyle.FixedSingle,
             Cursor = Cursors.IBeam,
         };
@@ -853,7 +1029,7 @@ public sealed class MainForm : Form
             var horizontalPadding = 10;
             var textHeight = Math.Max(18, TextRenderer.MeasureText("가", textBox.Font).Height);
             var textWidth = Math.Max(0, host.ClientSize.Width - (horizontalPadding * 2));
-            var textTop = Math.Max(0, (host.ClientSize.Height - textHeight) / 2 - 1);
+            var textTop = Math.Max(0, (host.ClientSize.Height - textHeight) / 2);
             textBox.SetBounds(horizontalPadding, textTop, textWidth, textHeight + 2);
         }
 
@@ -876,24 +1052,9 @@ public sealed class MainForm : Form
         button.BackColor = AccentColor;
         button.ForeColor = Color.White;
         button.Padding = new Padding(14, 0, 14, 0);
-        button.Margin = new Padding(0, 7, 8, 7);
-        button.Height = 28;
+        button.Margin = new Padding(0, TopVerticalMargin, 8, TopVerticalMargin);
+        button.Height = TopControlHeight;
         button.AutoSize = false;
-        button.TextAlign = ContentAlignment.MiddleCenter;
-        button.UseVisualStyleBackColor = false;
-    }
-
-    private static void StyleModeButton(Button button)
-    {
-        button.FlatStyle = FlatStyle.Flat;
-        button.FlatAppearance.BorderSize = 1;
-        button.FlatAppearance.BorderColor = BorderColor;
-        button.Padding = new Padding(12, 0, 12, 0);
-        button.Margin = new Padding(0, 6, 0, 6);
-        button.Height = 28;
-        button.AutoSize = false;
-        button.BackColor = AccentSoftColor;
-        button.ForeColor = MutedTextColor;
         button.TextAlign = ContentAlignment.MiddleCenter;
         button.UseVisualStyleBackColor = false;
     }
@@ -912,23 +1073,12 @@ public sealed class MainForm : Form
     private void SetSearchTarget(SearchTarget searchTarget)
     {
         _searchTarget = searchTarget;
+        if (_searchTargetToggle.SelectedTarget != searchTarget)
+        {
+            _searchTargetToggle.SelectedTarget = searchTarget;
+        }
 
-        var activeBack = AccentColor;
-        var activeFore = Color.White;
-        var normalBack = AccentSoftColor;
-        var normalFore = MutedTextColor;
-
-        _fileNameModeButton.BackColor = searchTarget == SearchTarget.FileName ? activeBack : normalBack;
-        _fileNameModeButton.ForeColor = searchTarget == SearchTarget.FileName ? activeFore : normalFore;
-        _fileNameModeButton.FlatAppearance.BorderColor = searchTarget == SearchTarget.FileName ? AccentColor : BorderColor;
-        _fileNameModeButton.FlatAppearance.BorderSize = 1;
-        _fileNameModeButton.Font = new Font(Font, FontStyle.Regular);
-
-        _contentModeButton.BackColor = searchTarget == SearchTarget.DocumentContent ? activeBack : normalBack;
-        _contentModeButton.ForeColor = searchTarget == SearchTarget.DocumentContent ? activeFore : normalFore;
-        _contentModeButton.FlatAppearance.BorderColor = searchTarget == SearchTarget.DocumentContent ? AccentColor : BorderColor;
-        _contentModeButton.FlatAppearance.BorderSize = 1;
-        _contentModeButton.Font = new Font(Font, FontStyle.Regular);
+        _searchTargetToggle.Invalidate();
     }
 
     private SearchResult? GetSelectedResult()
@@ -991,19 +1141,20 @@ public sealed class MainForm : Form
         _previewMetaLabel.Text = _selectedPreviewResult.DirectoryPath;
         _previewMetaLabel.Links.Clear();
         _previewMetaLabel.Links.Add(0, _previewMetaLabel.Text.Length, _selectedPreviewResult.DirectoryPath);
-        _previewMarkerPanel.Visible = _searchTarget == SearchTarget.DocumentContent;
-        _previewBox.Font = GetPreviewFont(Path.GetExtension(_selectedPreviewResult.Path));
+        var previewExtension = Path.GetExtension(_selectedPreviewResult.Path);
+        _previewBox.Font = GetPreviewFont(previewExtension);
+        ConfigurePreviewBoxLayout(previewExtension);
         var selectedMatchIndexInPreview = -1;
         var previewBody = preview.Body;
         var startMarkerIndex = previewBody.IndexOf(PreviewDocumentBuilder.SelectedMatchStartMarker, StringComparison.Ordinal);
         if (startMarkerIndex >= 0)
         {
+            selectedMatchIndexInPreview = NormalizeRichTextIndex(previewBody, startMarkerIndex);
             previewBody = previewBody.Remove(startMarkerIndex, PreviewDocumentBuilder.SelectedMatchStartMarker.Length);
             var endMarkerIndex = previewBody.IndexOf(PreviewDocumentBuilder.SelectedMatchEndMarker, startMarkerIndex, StringComparison.Ordinal);
             if (endMarkerIndex >= 0)
             {
                 previewBody = previewBody.Remove(endMarkerIndex, PreviewDocumentBuilder.SelectedMatchEndMarker.Length);
-                selectedMatchIndexInPreview = startMarkerIndex;
             }
         }
 
@@ -1017,9 +1168,6 @@ public sealed class MainForm : Form
         else
         {
             _previewBox.Select(0, 0);
-            _focusedPreviewCharIndex = -1;
-            _focusedPreviewMarkerY = -1;
-            _previewMarkerPanel.Invalidate();
         }
 
         var hasMultipleMatches = preview.Matches.Count > 1;
@@ -1036,10 +1184,17 @@ public sealed class MainForm : Form
     {
         return extension.ToLowerInvariant() switch
         {
-            ".xlsx" or ".xls" or ".csv" or ".tsv" => new Font("Consolas", 10F, FontStyle.Regular, GraphicsUnit.Point),
+            ".xlsx" or ".xls" or ".csv" or ".tsv" => new Font("GulimChe", 10F, FontStyle.Regular, GraphicsUnit.Point),
             ".json" or ".xml" or ".yaml" or ".yml" or ".css" or ".js" or ".ts" or ".py" or ".cs" or ".java" or ".sql" => new Font("Consolas", 10F, FontStyle.Regular, GraphicsUnit.Point),
             _ => new Font("Malgun Gothic", 10.5F, FontStyle.Regular, GraphicsUnit.Point),
         };
+    }
+
+    private void ConfigurePreviewBoxLayout(string extension)
+    {
+        var isTabular = extension.ToLowerInvariant() is ".xlsx" or ".xls" or ".csv" or ".tsv";
+        _previewBox.WordWrap = !isTabular;
+        _previewBox.ScrollBars = isTabular ? RichTextBoxScrollBars.Both : RichTextBoxScrollBars.Vertical;
     }
 
     private void ClearPreviewPanel()
@@ -1056,10 +1211,6 @@ public sealed class MainForm : Form
         _previewExpandButton.Enabled = false;
         _previewPreviousButton.Enabled = false;
         _previewNextButton.Enabled = false;
-        _focusedPreviewCharIndex = -1;
-        _focusedPreviewMarkerY = -1;
-        _previewMarkerPanel.Visible = false;
-        _previewMarkerPanel.Invalidate();
         _previewBox.Clear();
     }
 
@@ -1123,7 +1274,12 @@ public sealed class MainForm : Form
             return;
         }
 
-        e.Value = result.Status == "실패" ? _failureIcon : null;
+        e.Value = result.Status switch
+        {
+            "성공" => _successIcon,
+            "실패" => _failureIcon,
+            _ => null,
+        };
         e.FormattingApplied = true;
     }
 
@@ -1198,9 +1354,6 @@ public sealed class MainForm : Form
     {
         if (string.IsNullOrWhiteSpace(keyword) || string.IsNullOrEmpty(_previewBox.Text))
         {
-            _focusedPreviewCharIndex = -1;
-            _focusedPreviewMarkerY = -1;
-            _previewMarkerPanel.Invalidate();
             return;
         }
 
@@ -1231,6 +1384,10 @@ public sealed class MainForm : Form
 
         if (focusedMatchIndex >= 0)
         {
+            _previewBox.Select(focusedMatchIndex, keyword.Length);
+            _previewBox.SelectionBackColor = AccentColor;
+            _previewBox.SelectionColor = Color.White;
+
             var matchLine = _previewBox.GetLineFromCharIndex(focusedMatchIndex);
             var targetLine = Math.Max(0, matchLine - 3);
             var targetIndex = _previewBox.GetFirstCharIndexFromLine(targetLine);
@@ -1239,59 +1396,31 @@ public sealed class MainForm : Form
                 _previewBox.Select(targetIndex, 0);
                 _previewBox.ScrollToCaret();
             }
-
-            UpdateFocusedPreviewMarker(focusedMatchIndex);
         }
         else
         {
             _previewBox.Select(0, 0);
-            _focusedPreviewCharIndex = -1;
-            _focusedPreviewMarkerY = -1;
-            _previewMarkerPanel.Invalidate();
         }
     }
 
-    private void UpdateFocusedPreviewMarker(int focusedMatchIndex)
+    private static int NormalizeRichTextIndex(string source, int charIndex)
     {
-        _focusedPreviewCharIndex = focusedMatchIndex;
-        var focusedLine = _previewBox.GetLineFromCharIndex(focusedMatchIndex);
-        var lineStartIndex = _previewBox.GetFirstCharIndexFromLine(focusedLine);
-        if (lineStartIndex < 0)
+        if (charIndex <= 0)
         {
-            _focusedPreviewMarkerY = -1;
-            _previewMarkerPanel.Invalidate();
-            return;
+            return 0;
         }
 
-        var position = _previewBox.GetPositionFromCharIndex(lineStartIndex);
-        _focusedPreviewMarkerY = Math.Max(6, position.Y + 4);
-        _previewMarkerPanel.Invalidate();
-    }
-
-    private void RefreshFocusedPreviewMarker()
-    {
-        if (_focusedPreviewCharIndex < 0)
+        var safeLength = Math.Min(charIndex, source.Length);
+        var normalizedIndex = 0;
+        for (var i = 0; i < safeLength; i++)
         {
-            return;
+            if (source[i] != '\r')
+            {
+                normalizedIndex++;
+            }
         }
 
-        UpdateFocusedPreviewMarker(_focusedPreviewCharIndex);
-    }
-
-    private void PreviewMarkerPanelOnPaint(object? sender, PaintEventArgs e)
-    {
-        e.Graphics.Clear(Color.White);
-
-        using var linePen = new Pen(BorderColor);
-        e.Graphics.DrawLine(linePen, _previewMarkerPanel.Width - 1, 0, _previewMarkerPanel.Width - 1, _previewMarkerPanel.Height);
-
-        if (_focusedPreviewMarkerY < 0)
-        {
-            return;
-        }
-
-        using var markerBrush = new SolidBrush(AccentColor);
-        e.Graphics.FillEllipse(markerBrush, 5, _focusedPreviewMarkerY, 10, 10);
+        return normalizedIndex;
     }
 
     private void OpenSelectedFile()

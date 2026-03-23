@@ -78,7 +78,7 @@ public sealed class DocumentSearcher
                 else
                 {
                     status = "실패";
-                    content = "본문 추출을 지원하지 않는 형식이야.";
+                    content = "본문 추출을 지원하지 않는 형식입니다.";
                 }
             }
             catch (Exception ex)
@@ -103,6 +103,7 @@ public sealed class DocumentSearcher
 
         return new DocumentIndexData
         {
+            FormatVersion = DocumentIndexData.CurrentFormatVersion,
             RootFolder = rootFolder,
             Patterns = patterns.Select(static item => item.Trim()).Where(static item => !string.IsNullOrWhiteSpace(item)).ToList(),
             IndexedAtUtc = DateTimeOffset.UtcNow,
@@ -148,6 +149,7 @@ public sealed class DocumentSearcher
 
         return new DocumentIndexData
         {
+            FormatVersion = DocumentIndexData.CurrentFormatVersion,
             RootFolder = rootFolder,
             Patterns = patterns.Select(static item => item.Trim()).Where(static item => !string.IsNullOrWhiteSpace(item)).ToList(),
             IndexedAtUtc = DateTimeOffset.UtcNow,
@@ -191,7 +193,10 @@ public sealed class DocumentSearcher
 
             if (entry.Status == "실패")
             {
-                result = new SearchResult(entry.Path, entry.Content, "실패");
+                if (string.IsNullOrWhiteSpace(trimmedKeyword))
+                {
+                    result = new SearchResult(entry.Path, entry.Content, "실패");
+                }
             }
             else if (string.IsNullOrWhiteSpace(trimmedKeyword) ||
                      entry.Content.Contains(trimmedKeyword, StringComparison.OrdinalIgnoreCase))
@@ -276,7 +281,7 @@ public sealed class DocumentSearcher
 
         if (extension is ".doc" or ".xls" or ".ppt" or ".hwp")
         {
-            return "본문 추출에 실패했어.\n해당 형식을 여는 프로그램이 설치돼 있는지 먼저 확인해줘.";
+            return "본문 추출에 실패했습니다.\n해당 형식을 여는 프로그램이 설치되어 있는지 먼저 확인해 주세요.";
         }
 
         if (extension is ".txt" or ".md" or ".csv" or ".tsv" or ".json" or ".xml" or ".log" or ".ini" or ".cfg" or ".yaml" or ".yml" or ".html" or ".htm" or ".css" or ".js" or ".ts" or ".py" or ".cs" or ".java" or ".sql")
@@ -295,7 +300,7 @@ public sealed class DocumentSearcher
             return "문서를 여는 중 오류가 났어.\n파일이 잠겨 있거나 해당 프로그램 자동화에 실패했을 수 있어.";
         }
 
-        return "본문 추출에 실패했어.\n파일이 잠겨 있거나 손상됐을 수 있어.";
+            return "본문 추출에 실패했습니다.\n파일이 잠겨 있거나 손상되었을 수 있습니다.";
     }
 
     private DocumentIndexEntry BuildIndexEntry(string path, FileInfo fileInfo)
@@ -313,7 +318,7 @@ public sealed class DocumentSearcher
             else
             {
                 status = "실패";
-                content = "본문 추출을 지원하지 않는 형식이야.";
+                content = "본문 추출을 지원하지 않는 형식입니다.";
             }
         }
         catch (Exception ex)
@@ -362,6 +367,11 @@ public sealed class DocumentSearcher
                 foreach (var file in Directory.EnumerateFiles(current))
                 {
                     var name = Path.GetFileName(file).ToLowerInvariant();
+                    if (name.StartsWith("~$", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
                     if (loweredPatterns.Any(pattern => WildcardMatches(name, pattern)))
                     {
                         matches.Add(file);
@@ -482,7 +492,8 @@ public sealed class DocumentSearcher
             entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) &&
             !entry.FullName.EndsWith("styles.xml", StringComparison.OrdinalIgnoreCase) &&
             !entry.FullName.EndsWith("settings.xml", StringComparison.OrdinalIgnoreCase),
-            "zip-xml");
+            "zip-xml",
+            ExtractWordTextFromXml);
     }
 
     private static ExtractionResult ExtractPptx(string path)
@@ -504,9 +515,14 @@ public sealed class DocumentSearcher
             "zip-xml");
     }
 
-    private static ExtractionResult ExtractZipXml(string path, Func<ZipArchiveEntry, bool> includeEntry, string engine)
+    private static ExtractionResult ExtractZipXml(
+        string path,
+        Func<ZipArchiveEntry, bool> includeEntry,
+        string engine,
+        Func<string, string>? textExtractor = null)
     {
         var parts = new List<string>();
+        textExtractor ??= ExtractTextFromXml;
 
         using var stream = File.OpenRead(path);
         using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
@@ -520,7 +536,7 @@ public sealed class DocumentSearcher
             using var entryStream = entry.Open();
             using var reader = new StreamReader(entryStream, Encoding.UTF8, true);
             var xml = reader.ReadToEnd();
-            var text = ExtractTextFromXml(xml);
+            var text = textExtractor(xml);
             if (!string.IsNullOrWhiteSpace(text))
             {
                 parts.Add(text);
@@ -545,6 +561,41 @@ public sealed class DocumentSearcher
         {
             return string.Empty;
         }
+    }
+
+    private static string ExtractWordTextFromXml(string xml)
+    {
+        try
+        {
+            var doc = XDocument.Parse(xml);
+            var values = doc.DescendantNodes()
+                .OfType<XText>()
+                .Where(static node => !IsWordFieldCodeText(node))
+                .Select(static node => node.Value.Trim())
+                .Where(static value => !string.IsNullOrWhiteSpace(value));
+            return NormalizeText(string.Join(Environment.NewLine, values));
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static bool IsWordFieldCodeText(XText node)
+    {
+        var parent = node.Parent;
+        if (parent is null)
+        {
+            return false;
+        }
+
+        if (parent.Name.LocalName is "instrText" or "delInstrText")
+        {
+            return true;
+        }
+
+        return parent.Ancestors().Any(static ancestor =>
+            ancestor.Name.LocalName is "fldSimple" or "instrText" or "delInstrText");
     }
 
     private static ExtractionResult ExtractXlsx(string path)

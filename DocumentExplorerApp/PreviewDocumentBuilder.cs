@@ -15,8 +15,7 @@ public sealed record PreviewRenderData(
 public static class PreviewDocumentBuilder
 {
     private const int MaxPreviewChars = 2400;
-    private const int MaxTableColumnWidth = 28;
-    private const int FullPreviewThresholdChars = 10000;
+    private const int FullPreviewThresholdChars = 40000;
 
     public const string SelectedMatchStartMarker = "\uE000";
     public const string SelectedMatchEndMarker = "\uE001";
@@ -360,13 +359,13 @@ public static class PreviewDocumentBuilder
 
             if (lines[0].StartsWith("[Sheet]", StringComparison.OrdinalIgnoreCase))
             {
-                formattedLines.Add(lines[0].Replace("[Sheet]", "[시트]", StringComparison.OrdinalIgnoreCase));
+                formattedLines.Add(lines[0]);
                 startIndex = 1;
             }
 
             var rows = lines.Skip(startIndex)
                 .Select(static line => line.Split(" | ", StringSplitOptions.None)
-                    .Select(static cell => TrimTableCell(cell))
+                    .Select(static cell => cell.Trim())
                     .ToArray())
                 .Where(static row => row.Length > 0)
                 .ToList();
@@ -383,7 +382,7 @@ public static class PreviewDocumentBuilder
             {
                 for (var i = 0; i < row.Length; i++)
                 {
-                    widths[i] = Math.Min(MaxTableColumnWidth, Math.Max(widths[i], row[i].Length));
+                    widths[i] = Math.Max(widths[i], row[i].Length);
                 }
             }
 
@@ -394,8 +393,7 @@ public static class PreviewDocumentBuilder
                 for (var i = 0; i < columnCount; i++)
                 {
                     var value = i < row.Length ? row[i] : string.Empty;
-                    var display = value.Length > widths[i] ? value[..Math.Max(0, widths[i] - 1)] + "…" : value;
-                    paddedCells.Add(display.PadRight(widths[i]));
+                    paddedCells.Add(value.PadRight(widths[i]));
                 }
 
                 formattedLines.Add("| " + string.Join(" | ", paddedCells) + " |");
@@ -442,17 +440,6 @@ public static class PreviewDocumentBuilder
         return line.StartsWith("•", StringComparison.Ordinal) ||
                line.StartsWith("-", StringComparison.Ordinal) ||
                line.StartsWith("*", StringComparison.Ordinal);
-    }
-
-    private static string TrimTableCell(string value)
-    {
-        var trimmed = value.Trim();
-        if (trimmed.Length <= MaxTableColumnWidth)
-        {
-            return trimmed;
-        }
-
-        return trimmed[..(MaxTableColumnWidth - 1)] + "…";
     }
 
     private static string GetTypeLabel(string extension)

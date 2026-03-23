@@ -4,6 +4,10 @@ namespace DocumentExplorerApp;
 
 public sealed class DocumentIndexData
 {
+    public const int CurrentFormatVersion = 3;
+
+    public int FormatVersion { get; set; }
+
     public string RootFolder { get; set; } = string.Empty;
 
     public List<string> Patterns { get; set; } = [];
@@ -40,7 +44,13 @@ public static class DocumentIndexStore
         try
         {
             var json = File.ReadAllText(AppPaths.IndexPath);
-            return JsonSerializer.Deserialize<DocumentIndexData>(json);
+            var data = JsonSerializer.Deserialize<DocumentIndexData>(json);
+            if (data is null || data.FormatVersion != DocumentIndexData.CurrentFormatVersion)
+            {
+                return null;
+            }
+
+            return data;
         }
         catch
         {
@@ -63,6 +73,9 @@ public sealed class IndexingProgressForm : Form
     private readonly Label _detailLabel;
     private readonly Label _countLabel;
     private readonly ProgressBar _progressBar;
+    private readonly Button _cancelButton;
+
+    public event EventHandler? CancelRequested;
 
     public IndexingProgressForm()
     {
@@ -109,8 +122,8 @@ public sealed class IndexingProgressForm : Form
         _countLabel = new Label
         {
             Dock = DockStyle.Top,
-            Height = 28,
-            Padding = new Padding(18, 2, 18, 0),
+            Height = 24,
+            Padding = new Padding(18, 0, 18, 0),
             Text = "0 / 0",
             Font = new Font("Malgun Gothic", 9.5F, FontStyle.Bold, GraphicsUnit.Point),
         };
@@ -121,16 +134,44 @@ public sealed class IndexingProgressForm : Form
             Style = ProgressBarStyle.Continuous,
         };
 
-        var progressHost = new Panel
+        _cancelButton = new Button
+        {
+            Text = "취소",
+            Width = 84,
+            Height = 30,
+            Anchor = AnchorStyles.Right | AnchorStyles.Top,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(181, 79, 80),
+            ForeColor = Color.White,
+            Margin = new Padding(0),
+        };
+        _cancelButton.FlatAppearance.BorderSize = 0;
+        _cancelButton.Click += (_, _) =>
+        {
+            _cancelButton.Enabled = false;
+            _cancelButton.Text = "취소 중...";
+            CancelRequested?.Invoke(this, EventArgs.Empty);
+        };
+
+        var footer = new TableLayoutPanel
         {
             Dock = DockStyle.Bottom,
-            Height = 44,
+            Height = 82,
             Padding = new Padding(18, 0, 18, 18),
+            ColumnCount = 2,
+            RowCount = 2,
+            BackColor = Color.FromArgb(255, 252, 248),
         };
-        progressHost.Controls.Add(_progressBar);
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
+        footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+        footer.Controls.Add(_countLabel, 0, 0);
+        footer.SetColumnSpan(_countLabel, 2);
+        footer.Controls.Add(_progressBar, 0, 1);
+        footer.Controls.Add(_cancelButton, 1, 1);
 
-        Controls.Add(progressHost);
-        Controls.Add(_countLabel);
+        Controls.Add(footer);
         Controls.Add(_detailLabel);
         Controls.Add(_descriptionLabel);
         Controls.Add(_titleLabel);
@@ -156,5 +197,11 @@ public sealed class IndexingProgressForm : Form
 
         _progressBar.Maximum = total;
         _progressBar.Value = Math.Max(0, current);
+    }
+
+    public void SetCancelState(bool canceling)
+    {
+        _cancelButton.Enabled = !canceling;
+        _cancelButton.Text = canceling ? "취소 중..." : "취소";
     }
 }

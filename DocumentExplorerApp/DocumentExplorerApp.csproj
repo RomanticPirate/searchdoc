@@ -9,6 +9,11 @@
     <AssemblyName>SearchDoc</AssemblyName>
     <RootNamespace>SearchDoc</RootNamespace>
     <Product>찾아줘문서</Product>
+    <AssemblyTitle>파일 찾다가 답답해서 내가 만든 프로그램</AssemblyTitle>
+    <FileDescription>파일 찾다가 답답해서 내가 만든 프로그램</FileDescription>
+    <Description>파일 찾다가 답답해서 내가 만든 프로그램</Description>
+    <Company>전진우</Company>
+    <Authors>전진우</Authors>
     <ApplicationTitle>찾아줘문서</ApplicationTitle>
     <ApplicationIcon>Assets\searchdoc.ico</ApplicationIcon>
   </PropertyGroup>
@@ -17,6 +22,7 @@
     <Content Include="Assets\searchdoc.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <EmbeddedResource Include="Assets\info_icon.png" />
   </ItemGroup>
 
 </Project>

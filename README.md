@@ -1,21 +1,29 @@
 # 문서 탐색기
 
-실행 파일 위치:
+Windows Forms 기반 로컬 문서 검색 프로그램입니다.
 
-- `DocumentExplorerApp\bin\Release\net8.0-windows\publish\DocumentExplorerApp.exe`
+## 현재 배포 방식
 
-설명:
+- 로컬 배포본은 `실행파일/SearchDoc.exe` 단일 파일입니다.
+- git 저장소에는 배포 산출물을 올리지 않고, 소스와 자산만 관리합니다.
 
-- 검은 콘솔 창 없이 실행되는 Windows Forms 기반 문서 본문 검색기였어.
-- 마지막으로 선택한 검색 폴더를 `document_search_settings.json`으로 저장해.
-- 오른쪽 미리보기에서 검색어를 검은 배경, 흰 글자로 하이라이트해.
+## 주요 기능
 
-지원 형식:
+- 파일명 검색 / 문서 내용 검색
+- `docx`, `xlsx`, `pptx`, `pdf`, `txt`, `csv`, `json`, `xml` 등 다양한 형식 지원
+- 검색 결과 목록과 문서 미리보기
+- 검색어 하이라이트 및 이전/다음 이동
+- 최초 1회 색인 및 변경 파일 재색인
 
-- `docx`, `xlsx`, `pptx`, `hwpx`: 앱이 직접 읽어.
-- `doc`, `xls`, `ppt`: Microsoft Office가 설치되어 있으면 읽어.
-- `hwp`: 한글(HWP)이 설치되어 있으면 읽어.
+## 주요 소스 위치
 
-소스 위치:
+- 앱 프로젝트: `DocumentExplorerApp`
+- 메인 UI: `DocumentExplorerApp/MainForm.cs`
+- 문서 검색 로직: `DocumentExplorerApp/DocumentSearcher.cs`
+- 미리보기 생성: `DocumentExplorerApp/PreviewDocumentBuilder.cs`
+- 색인/색인 팝업: `DocumentExplorerApp/DocumentIndexing.cs`
 
-- `DocumentExplorerApp`
+## 참고
+
+- 실행 파일 속성 메타데이터가 포함되어 있습니다.
+- 최종 배포 전에는 `dotnet publish`로 `실행파일_refresh`를 만든 뒤 `실행파일/SearchDoc.exe`로 교체하는 흐름을 사용했습니다.
