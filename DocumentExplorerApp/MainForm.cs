@@ -10,7 +10,6 @@ public sealed class MainForm : Form
     private const int TopRowHeight = 42;
     private const int TopControlHeight = 32;
     private const int TopVerticalMargin = 5;
-
     private static readonly Color AppBackgroundColor = Color.FromArgb(255, 247, 242);
     private static readonly Color SurfaceColor = Color.FromArgb(255, 252, 248);
     private static readonly Color SurfaceAccentColor = Color.FromArgb(255, 240, 231);
@@ -60,6 +59,7 @@ public sealed class MainForm : Form
 
     private CancellationTokenSource? _searchCts;
     private bool _restartRequested;
+    private bool _isSearchBusy;
     private SearchTarget _searchTarget = SearchTarget.FileName;
     private SearchResult? _selectedPreviewResult;
     private int _selectedPreviewMatchIndex;
@@ -86,6 +86,9 @@ public sealed class MainForm : Form
 
         BuildLayout();
         Program.Log("Layout built");
+
+        // 입력칸 외부 클릭 시 포커스 해제 (단축키 입력을 위해)
+        Application.AddMessageFilter(new DefocusMessageFilter(this));
 
         BindInitialState();
         Program.Log("Initial state bound");
@@ -171,7 +174,7 @@ public sealed class MainForm : Form
         _keywordTextBox.KeyDown += KeywordTextBoxOnKeyDown;
         _keywordTextBox.Enter += (_, _) => UpdateSearchButtonVisualState();
         _keywordTextBox.Leave += (_, _) => BeginInvoke((Action)UpdateSearchButtonVisualState);
-        _keywordTextBox.TextChanged += (_, _) => UpdateSearchButtonVisualState();
+        _keywordTextBox.TextChanged += KeywordTextBoxOnTextChanged;
         var keywordInputHost = CreateInputHost(_keywordTextBox);
         keywordInputHost.Dock = DockStyle.Fill;
         searchInputPanel.Controls.Add(keywordInputHost, 0, 0);
@@ -705,12 +708,23 @@ public sealed class MainForm : Form
         _ = RequestSearchAsync();
     }
 
+    private void KeywordTextBoxOnTextChanged(object? sender, EventArgs e)
+    {
+        UpdateSearchButtonVisualState();
+    }
+
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         if (keyData == (Keys.Control | Keys.F))
         {
             _keywordTextBox.Focus();
             _keywordTextBox.SelectAll();
+            return true;
+        }
+
+        if (keyData == Keys.Enter && _searchButton.Enabled)
+        {
+            _ = RequestSearchAsync();
             return true;
         }
 
@@ -742,8 +756,48 @@ public sealed class MainForm : Form
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
+    /// <summary>
+    /// 앱 레벨에서 마우스 클릭을 감지해, 텍스트박스 외부 클릭 시 포커스를 해제합니다.
+    /// </summary>
+    private sealed class DefocusMessageFilter : IMessageFilter
+    {
+        private const int WM_LBUTTONDOWN = 0x0201;
+        private readonly MainForm _form;
+
+        public DefocusMessageFilter(MainForm form) => _form = form;
+
+        public bool PreFilterMessage(ref Message m)
+        {
+            if (m.Msg == WM_LBUTTONDOWN && _form.ActiveControl is TextBoxBase)
+            {
+                var clicked = Control.FromHandle(m.HWnd);
+                if (clicked is not null && !IsTextInput(clicked))
+                {
+                    _form.ActiveControl = null;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsTextInput(Control? c)
+        {
+            while (c is not null)
+            {
+                if (c is TextBoxBase) return true;
+                c = c.Parent;
+            }
+            return false;
+        }
+    }
+
     private async Task RequestSearchAsync()
     {
+        if (string.IsNullOrWhiteSpace(_keywordTextBox.Text))
+        {
+            ClearSearchResultsToIdle();
+            return;
+        }
+
         if (_searchCts is not null)
         {
             _restartRequested = true;
@@ -775,6 +829,11 @@ public sealed class MainForm : Form
         if (indexed && _currentIndex is not null)
         {
             _statusLabel.Text = $"색인 완료: {_currentIndex.Entries.Count}개 파일";
+        }
+
+        if (!string.IsNullOrWhiteSpace(_keywordTextBox.Text))
+        {
+            await RequestSearchAsync();
         }
     }
 
@@ -999,11 +1058,11 @@ public sealed class MainForm : Form
 
     private void SetBusyState(bool busy)
     {
+        _isSearchBusy = busy;
         _folderTextBox.Enabled = !busy;
         _keywordTextBox.Enabled = !busy;
         _patternTextBox.Enabled = !busy;
         _browseFolderButton.Enabled = !busy;
-        _searchButton.Enabled = !busy;
         _resetPatternButton.Enabled = !busy;
         _searchTargetToggle.Enabled = !busy;
 
@@ -1015,12 +1074,22 @@ public sealed class MainForm : Form
         UpdateSearchButtonVisualState();
     }
 
+    private void ClearSearchResultsToIdle()
+    {
+        _results.Clear();
+        ClearPreviewPanel();
+        _statusLabel.Text = "대기 중";
+    }
+
     private void UpdateSearchButtonVisualState()
     {
         if (_searchButton is null)
         {
             return;
         }
+
+        var hasKeyword = !string.IsNullOrWhiteSpace(_keywordTextBox.Text);
+        _searchButton.Enabled = !_isSearchBusy && hasKeyword;
 
         if (!_searchButton.Enabled)
         {
@@ -1029,10 +1098,8 @@ public sealed class MainForm : Form
             return;
         }
 
-        var hasKeyword = !string.IsNullOrWhiteSpace(_keywordTextBox.Text);
-        var isActive = _keywordTextBox.Focused && hasKeyword;
-        _searchButton.BackColor = isActive ? AccentColor : DisabledButtonBackColor;
-        _searchButton.ForeColor = isActive ? Color.White : DisabledButtonForeColor;
+        _searchButton.BackColor = hasKeyword ? AccentColor : DisabledButtonBackColor;
+        _searchButton.ForeColor = hasKeyword ? Color.White : DisabledButtonForeColor;
     }
 
     private void RefreshResultColumnWidths()
@@ -1153,6 +1220,7 @@ public sealed class MainForm : Form
         }
 
         _searchTargetToggle.Invalidate();
+        UpdateSearchButtonVisualState();
     }
 
     private SearchResult? GetSelectedResult()
