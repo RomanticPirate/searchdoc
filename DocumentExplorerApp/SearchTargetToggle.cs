@@ -86,8 +86,8 @@ internal sealed class SearchTargetToggle : Control
         e.Graphics.DrawLine(dividerPen, _contentRect.Left, 3, _contentRect.Left, Height - 4);
         e.Graphics.DrawPath(borderPen, outerPath);
 
-        DrawLabel(e.Graphics, _fileNameRect, "\uD30C\uC77C\uBA85", _selectedTarget == SearchTarget.FileName, Font);
-        DrawLabel(e.Graphics, _contentRect, "\uBB38\uC11C \uB0B4\uC6A9", _selectedTarget == SearchTarget.DocumentContent, Font);
+        DrawLabel(e.Graphics, _fileNameRect, "\uD30C\uC77C\uBA85 (Q)", _selectedTarget == SearchTarget.FileName, Font);
+        DrawLabel(e.Graphics, _contentRect, "\uBB38\uC11C \uB0B4\uC6A9 (W)", _selectedTarget == SearchTarget.DocumentContent, Font);
     }
 
     private void UpdateLayoutRects()

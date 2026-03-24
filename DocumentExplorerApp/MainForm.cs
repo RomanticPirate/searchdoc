@@ -20,6 +20,8 @@ public sealed class MainForm : Form
     private static readonly Color MintSelectionColor = Color.FromArgb(191, 228, 216);
     private static readonly Color TextColor = Color.FromArgb(49, 39, 53);
     private static readonly Color MutedTextColor = Color.FromArgb(132, 118, 125);
+    private static readonly Color DisabledButtonBackColor = Color.FromArgb(236, 225, 221);
+    private static readonly Color DisabledButtonForeColor = Color.FromArgb(156, 140, 146);
 
     private const string FailureTooltip =
         "실패 뜻:\n" +
@@ -104,7 +106,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 3,
             RowCount = 5,
-            Padding = new Padding(12),
+            Padding = new Padding(12, 12, 12, 2),
             BackColor = AppBackgroundColor,
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110F));
@@ -113,13 +115,15 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
         Controls.Add(root);
         Program.Log("Root created");
 
         root.Controls.Add(CreateFieldLabel("검색 폴더"), 0, 0);
         _folderTextBox = CreateInputTextBox();
+        _folderTextBox.ReadOnly = true;
+        _folderTextBox.TabStop = false;
         root.Controls.Add(CreateInputHost(_folderTextBox), 1, 0);
         _browseFolderButton = new Button { Text = "폴더 찾기", Anchor = AnchorStyles.Left | AnchorStyles.Right };
         StyleActionButton(_browseFolderButton);
@@ -136,7 +140,7 @@ public sealed class MainForm : Form
         root.Controls.Add(_resetPatternButton, 2, 1);
         Program.Log("Pattern area created");
 
-        root.Controls.Add(CreateFieldLabel("검색어"), 0, 2);
+        root.Controls.Add(CreateFieldLabel("검색어 (Ctrl+F)"), 0, 2);
         var searchTargetPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -165,10 +169,13 @@ public sealed class MainForm : Form
 
         _keywordTextBox = CreateInputTextBox();
         _keywordTextBox.KeyDown += KeywordTextBoxOnKeyDown;
+        _keywordTextBox.Enter += (_, _) => UpdateSearchButtonVisualState();
+        _keywordTextBox.Leave += (_, _) => BeginInvoke((Action)UpdateSearchButtonVisualState);
+        _keywordTextBox.TextChanged += (_, _) => UpdateSearchButtonVisualState();
         var keywordInputHost = CreateInputHost(_keywordTextBox);
         keywordInputHost.Dock = DockStyle.Fill;
         searchInputPanel.Controls.Add(keywordInputHost, 0, 0);
-        _searchButton = new Button { Text = "검색", Width = 172, Anchor = AnchorStyles.Left };
+        _searchButton = new Button { Text = "검색 (Enter)", Width = 172, Anchor = AnchorStyles.Left };
         StyleActionButton(_searchButton);
         _searchButton.Font = new Font("Malgun Gothic", 12F, FontStyle.Bold, GraphicsUnit.Point);
         _searchButton.Margin = new Padding(0, TopVerticalMargin, 0, TopVerticalMargin);
@@ -190,23 +197,35 @@ public sealed class MainForm : Form
 
         _statusLabel = new Label
         {
-            AutoSize = true,
-            TextAlign = ContentAlignment.MiddleRight,
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleLeft,
             Dock = DockStyle.Fill,
             ForeColor = MutedTextColor,
+        };
+
+        var creditLabel = new Label
+        {
+            AutoSize = true,
+            Anchor = AnchorStyles.Right,
+            Text = "Made by NX-JW",
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = MutedTextColor,
+            Margin = new Padding(0),
         };
 
         var statusPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
+            ColumnCount = 2,
             Margin = new Padding(0),
             BackColor = AppBackgroundColor,
         };
-        statusPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        statusPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        statusPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         statusPanel.Controls.Add(_statusLabel, 0, 0);
+        statusPanel.Controls.Add(creditLabel, 1, 0);
 
-        root.Controls.Add(statusPanel, 0, 3);
+        root.Controls.Add(statusPanel, 0, 4);
         root.SetColumnSpan(statusPanel, 3);
         Program.Log("Action area created");
 
@@ -217,7 +236,7 @@ public sealed class MainForm : Form
             BackColor = AppBackgroundColor,
             Padding = new Padding(0, 4, 0, 0),
         };
-        root.Controls.Add(_mainSplit, 0, 4);
+        root.Controls.Add(_mainSplit, 0, 3);
         root.SetColumnSpan(_mainSplit, 3);
         _mainSplit.HandleCreated += (_, _) =>
         {
@@ -482,12 +501,12 @@ public sealed class MainForm : Form
         };
         previewNavGroup.Controls.Add(_previewMatchLabel, 1, 0);
 
-        _previewPreviousButton = new Button { Text = "이전(A)", Width = 96, Height = 34, Margin = new Padding(0, 0, 8, 0) };
+        _previewPreviousButton = new Button { Text = "이전 (A)", Width = 96, Height = 34, Margin = new Padding(0, 0, 8, 0) };
         StylePreviewNavButton(_previewPreviousButton);
         _previewPreviousButton.Click += (_, _) => MovePreviewMatch(-1);
         previewNavGroup.Controls.Add(_previewPreviousButton, 2, 0);
 
-        _previewNextButton = new Button { Text = "다음(S)", Width = 96, Height = 34, Margin = new Padding(0) };
+        _previewNextButton = new Button { Text = "다음 (S)", Width = 96, Height = 34, Margin = new Padding(0) };
         StylePreviewNavButton(_previewNextButton);
         _previewNextButton.Click += (_, _) => MovePreviewMatch(1);
         previewNavGroup.Controls.Add(_previewNextButton, 3, 0);
@@ -671,6 +690,7 @@ public sealed class MainForm : Form
         _statusLabel.Text = "대기 중";
         SetSearchTarget(SearchTarget.FileName);
         ClearPreviewPanel();
+        UpdateSearchButtonVisualState();
     }
 
     private void KeywordTextBoxOnKeyDown(object? sender, KeyEventArgs e)
@@ -687,6 +707,23 @@ public sealed class MainForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (keyData == (Keys.Control | Keys.F))
+        {
+            _keywordTextBox.Focus();
+            _keywordTextBox.SelectAll();
+            return true;
+        }
+
+        if (keyData is Keys.Q or Keys.W)
+        {
+            var focusedControl = ActiveControl;
+            if (focusedControl is not TextBoxBase)
+            {
+                SetSearchTarget(keyData == Keys.Q ? SearchTarget.FileName : SearchTarget.DocumentContent);
+                return true;
+            }
+        }
+
         if (keyData is Keys.A or Keys.S)
         {
             var focusedControl = ActiveControl;
@@ -974,6 +1011,28 @@ public sealed class MainForm : Form
         {
             _statusLabel.Text = "검색 시작 중...";
         }
+
+        UpdateSearchButtonVisualState();
+    }
+
+    private void UpdateSearchButtonVisualState()
+    {
+        if (_searchButton is null)
+        {
+            return;
+        }
+
+        if (!_searchButton.Enabled)
+        {
+            _searchButton.BackColor = DisabledButtonBackColor;
+            _searchButton.ForeColor = DisabledButtonForeColor;
+            return;
+        }
+
+        var hasKeyword = !string.IsNullOrWhiteSpace(_keywordTextBox.Text);
+        var isActive = _keywordTextBox.Focused && hasKeyword;
+        _searchButton.BackColor = isActive ? AccentColor : DisabledButtonBackColor;
+        _searchButton.ForeColor = isActive ? Color.White : DisabledButtonForeColor;
     }
 
     private void RefreshResultColumnWidths()
@@ -1015,14 +1074,18 @@ public sealed class MainForm : Form
 
     private static Panel CreateInputHost(TextBox textBox)
     {
+        var isReadOnly = textBox.ReadOnly;
         var host = new Panel
         {
             Dock = DockStyle.Fill,
-            BackColor = SurfaceColor,
+            BackColor = isReadOnly ? Color.FromArgb(247, 241, 236) : SurfaceColor,
             Margin = new Padding(0, TopVerticalMargin, 0, TopVerticalMargin),
             BorderStyle = BorderStyle.FixedSingle,
-            Cursor = Cursors.IBeam,
+            Cursor = isReadOnly ? Cursors.Default : Cursors.IBeam,
         };
+
+        textBox.BackColor = host.BackColor;
+        textBox.ForeColor = isReadOnly ? MutedTextColor : TextColor;
 
         void LayoutTextBox()
         {
@@ -1036,10 +1099,21 @@ public sealed class MainForm : Form
         host.Resize += (_, _) => LayoutTextBox();
         host.MouseDown += (_, _) =>
         {
+            if (isReadOnly)
+            {
+                return;
+            }
+
             textBox.Focus();
             textBox.SelectionStart = textBox.TextLength;
         };
-        host.Enter += (_, _) => textBox.Focus();
+        host.Enter += (_, _) =>
+        {
+            if (!isReadOnly)
+            {
+                textBox.Focus();
+            }
+        };
         host.Controls.Add(textBox);
         LayoutTextBox();
         return host;
