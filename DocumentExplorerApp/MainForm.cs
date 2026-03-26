@@ -7,8 +7,8 @@ namespace DocumentExplorerApp;
 
 public sealed class MainForm : Form
 {
-    private const int TopRowHeight = 42;
-    private const int TopControlHeight = 32;
+    private const int TopRowHeight = 38;
+    private const int TopControlHeight = 28;
     private const int TopVerticalMargin = 5;
     private static readonly Color AppBackgroundColor = Color.FromArgb(255, 247, 242);
     private static readonly Color SurfaceColor = Color.FromArgb(255, 252, 248);
@@ -40,11 +40,11 @@ public sealed class MainForm : Form
 
     private TextBox _folderTextBox = null!;
     private TextBox _keywordTextBox = null!;
-    private TextBox _patternTextBox = null!;
+
     private Button _browseFolderButton = null!;
     private Button _searchButton = null!;
     private SearchTargetToggle _searchTargetToggle = null!;
-    private Button _resetPatternButton = null!;
+    private Button _advancedButton = null!;
     private Label _statusLabel = null!;
     private DataGridView _resultsGrid = null!;
     private RichTextBox _previewBox = null!;
@@ -56,6 +56,7 @@ public sealed class MainForm : Form
     private Button _previewNextButton = null!;
     private Button _previewExpandButton = null!;
     private SplitContainer _mainSplit = null!;
+    private TableLayoutPanel _root = null!;
 
     private CancellationTokenSource? _searchCts;
     private bool _restartRequested;
@@ -69,12 +70,14 @@ public sealed class MainForm : Form
         Program.Log("MainForm ctor start");
 
         Text = "찾아줘문서";
-        Size = new Size(1320, 980);
+        Size = new Size(1100, 840);
         MinimumSize = new Size(1100, 840);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = AppBackgroundColor;
         ForeColor = TextColor;
-        Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point);
+        Font = new Font("Malgun Gothic", 8F, FontStyle.Regular, GraphicsUnit.Point);
+        FormBorderStyle = FormBorderStyle.None;
+        MaximizeBox = false;
         var executableIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         if (executableIcon is not null)
         {
@@ -100,27 +103,141 @@ public sealed class MainForm : Form
         };
     }
 
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _failureIcon?.Dispose();
+            _successIcon?.Dispose();
+            _infoIconImage?.Dispose();
+            _paneToolTip?.Dispose();
+            _searchCts?.Dispose();
+            _searchCts = null;
+        }
+        base.Dispose(disposing);
+    }
+
     private void BuildLayout()
     {
         Program.Log("BuildLayout start");
+        if (IsSimpleMode)
+            BuildSimpleLayout();
+        else
+            BuildDetailedLayout();
+    }
 
-        var root = new TableLayoutPanel
+    private void BuildSimpleLayout()
+    {
+        Program.Log("BuildSimpleLayout start");
+
+        // 타이틀바
+        var titleBar = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = _titleBarHeight,
+            BackColor = AppBackgroundColor,
+            Padding = new Padding(0),
+        };
+        titleBar.Paint += (_, pe) =>
+        {
+            using var pen = new Pen(BorderColor, 1f);
+            pe.Graphics.DrawLine(pen, 0, titleBar.Height - 1, titleBar.Width, titleBar.Height - 1);
+        };
+        var titleLeft = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = AppBackgroundColor,
+        };
+        titleLeft.MouseDown += (s, e) => { };
+        var searchIconLabel = new Label
+        {
+            Text = "\uE721",
+            AutoSize = false,
+            Width = 22,
+            Dock = DockStyle.Left,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Segoe MDL2 Assets", 8F, FontStyle.Regular, GraphicsUnit.Point),
+            BackColor = AppBackgroundColor,
+            ForeColor = AccentColor,
+        };
+        var appTitleLabel = new Label
+        {
+            Text = "찾아줘문서",
+            AutoSize = false,
+            Width = 90,
+            Dock = DockStyle.Left,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Malgun Gothic", 8F, FontStyle.Regular, GraphicsUnit.Point),
+            BackColor = AppBackgroundColor,
+            ForeColor = TextColor,
+            Padding = new Padding(2, 0, 0, 0),
+        };
+        var closeBtn = new Button
+        {
+            Text = "×",
+            Width = 28,
+            Dock = DockStyle.Right,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = AppBackgroundColor,
+            ForeColor = TextColor,
+            Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point),
+            TextAlign = ContentAlignment.MiddleCenter,
+            UseVisualStyleBackColor = false,
+            TabStop = false,
+        };
+        closeBtn.FlatAppearance.BorderSize = 0;
+        closeBtn.Click += (_, _) => Close();
+        closeBtn.MouseEnter += (_, _) => closeBtn.BackColor = Color.FromArgb(196, 108, 109);
+        closeBtn.MouseLeave += (_, _) => closeBtn.BackColor = AppBackgroundColor;
+        var minimizeBtn = new Button
+        {
+            Text = "−",
+            Width = 28,
+            Dock = DockStyle.Right,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = AppBackgroundColor,
+            ForeColor = TextColor,
+            Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point),
+            TextAlign = ContentAlignment.MiddleCenter,
+            UseVisualStyleBackColor = false,
+            TabStop = false,
+        };
+        minimizeBtn.FlatAppearance.BorderSize = 0;
+        minimizeBtn.Click += (_, _) => WindowState = FormWindowState.Minimized;
+        minimizeBtn.MouseEnter += (_, _) => minimizeBtn.BackColor = BorderColor;
+        minimizeBtn.MouseLeave += (_, _) => minimizeBtn.BackColor = AppBackgroundColor;
+        // 드래그 이동 핸들러
+        Point _dragStart = default;
+        MouseEventHandler onTitleDown = (s, e) => { if (e.Button == MouseButtons.Left) _dragStart = Cursor.Position - (Size)Location; };
+        MouseEventHandler onTitleMove = (s, e) => { if (e.Button == MouseButtons.Left) Location = Cursor.Position - (Size)_dragStart; };
+        titleBar.MouseDown += onTitleDown; titleBar.MouseMove += onTitleMove;
+        titleLeft.MouseDown += onTitleDown; titleLeft.MouseMove += onTitleMove;
+        searchIconLabel.MouseDown += onTitleDown; searchIconLabel.MouseMove += onTitleMove;
+        appTitleLabel.MouseDown += onTitleDown; appTitleLabel.MouseMove += onTitleMove;
+
+        // 버튼 순서: minimizeBtn 먼저(오른쪽 끝), closeBtn 나중(그 왼쪽)
+        titleBar.Controls.Add(titleLeft);
+        titleBar.Controls.Add(minimizeBtn);
+        titleBar.Controls.Add(closeBtn);
+        titleLeft.Controls.Add(appTitleLabel);
+        titleLeft.Controls.Add(searchIconLabel);
+
+        var root = _root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 3,
-            RowCount = 5,
-            Padding = new Padding(12, 12, 12, 2),
+            RowCount = 3,
+            Padding = new Padding(12, 10, 12, 4),
             BackColor = AppBackgroundColor,
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110F));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80F));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 176F));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180F));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F)); // row 1: 검색어
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
-        Controls.Add(root);
+        Controls.Add(root);      // Fill: 먼저 추가
+        Controls.Add(titleBar);  // Top: 나중 추가 → 상단 공간 먼저 차지
         Program.Log("Root created");
 
         root.Controls.Add(CreateFieldLabel("검색 폴더"), 0, 0);
@@ -128,26 +245,51 @@ public sealed class MainForm : Form
         _folderTextBox.ReadOnly = true;
         _folderTextBox.TabStop = false;
         root.Controls.Add(CreateInputHost(_folderTextBox), 1, 0);
-        _browseFolderButton = new Button { Text = "폴더 찾기", Anchor = AnchorStyles.Left | AnchorStyles.Right };
+
+        var folderButtonPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 1,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+            BackColor = AppBackgroundColor,
+        };
+        folderButtonPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        folderButtonPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+        _browseFolderButton = new Button { Text = "폴더 설정", Anchor = AnchorStyles.Left | AnchorStyles.Right };
         StyleActionButton(_browseFolderButton);
         _browseFolderButton.Click += async (_, _) => await PickFolderAsync();
-        root.Controls.Add(_browseFolderButton, 2, 0);
+        folderButtonPanel.Controls.Add(_browseFolderButton, 0, 0);
+
+        _advancedButton = new Button
+        {
+            Text = "\uE90F",
+            Anchor = AnchorStyles.Left | AnchorStyles.Right,
+            Font = new Font("Segoe MDL2 Assets", 10F, FontStyle.Regular, GraphicsUnit.Point),
+        };
+        StyleAdvancedButton(_advancedButton, false);
+        _advancedButton.Width = 30;
+        _advancedButton.Height = 22;
+        _advancedButton.Margin = new Padding(4, 4, 0, 4);
+        _advancedButton.Click += (_, _) =>
+        {
+            using var settingsForm = new SettingsForm(_settings);
+            if (settingsForm.ShowDialog(this) == DialogResult.OK)
+            {
+                _settings.Save();
+                Application.Restart();
+            }
+        };
+
+        root.Controls.Add(folderButtonPanel, 2, 0);
         Program.Log("Top area created");
 
-        root.Controls.Add(CreateFieldLabel("확장자 패턴"), 0, 1);
-        _patternTextBox = CreateInputTextBox();
-        root.Controls.Add(CreateInputHost(_patternTextBox), 1, 1);
-        _resetPatternButton = new Button { Text = "확장자 초기화", Anchor = AnchorStyles.Left | AnchorStyles.Right };
-        StyleActionButton(_resetPatternButton);
-        _resetPatternButton.Click += (_, _) => _patternTextBox.Text = DocumentSearcher.DefaultPatterns;
-        root.Controls.Add(_resetPatternButton, 2, 1);
-        Program.Log("Pattern area created");
-
-        root.Controls.Add(CreateFieldLabel("검색어 (Ctrl+F)"), 0, 2);
         var searchTargetPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = 3,
             RowCount = 1,
             Margin = new Padding(0),
             Padding = new Padding(0),
@@ -155,7 +297,8 @@ public sealed class MainForm : Form
         };
         searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        searchTargetPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
+        searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        searchTargetPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
 
         var searchInputPanel = new TableLayoutPanel
         {
@@ -167,10 +310,11 @@ public sealed class MainForm : Form
             BackColor = AppBackgroundColor,
         };
         searchInputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        searchInputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 172F));
-        searchInputPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
+        searchInputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48F));
+        searchInputPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
 
         _keywordTextBox = CreateInputTextBox();
+        _keywordTextBox.Font = new Font("Malgun Gothic", 10F, FontStyle.Regular, GraphicsUnit.Point);
         _keywordTextBox.KeyDown += KeywordTextBoxOnKeyDown;
         _keywordTextBox.Enter += (_, _) => UpdateSearchButtonVisualState();
         _keywordTextBox.Leave += (_, _) => BeginInvoke((Action)UpdateSearchButtonVisualState);
@@ -178,11 +322,15 @@ public sealed class MainForm : Form
         var keywordInputHost = CreateInputHost(_keywordTextBox);
         keywordInputHost.Dock = DockStyle.Fill;
         searchInputPanel.Controls.Add(keywordInputHost, 0, 0);
-        _searchButton = new Button { Text = "검색 (Enter)", Width = 172, Anchor = AnchorStyles.Left };
+        _searchButton = new Button { Text = "\uE721", Width = 40, Anchor = AnchorStyles.Left };
         StyleActionButton(_searchButton);
-        _searchButton.Font = new Font("Malgun Gothic", 12F, FontStyle.Bold, GraphicsUnit.Point);
-        _searchButton.Margin = new Padding(0, TopVerticalMargin, 0, TopVerticalMargin);
-        _searchButton.Click += async (_, _) => await RequestSearchAsync();
+        _searchButton.Font = new Font("Segoe MDL2 Assets", 10F, FontStyle.Regular, GraphicsUnit.Point);
+        _searchButton.Padding = new Padding(0);
+        _searchButton.Height = 26;
+        _searchButton.Margin = new Padding(0, 4, 0, 4);
+        _searchButton.Click += async (_, _) => { if (_searchButton.Tag is true) await RequestSearchAsync(); };
+        _paneToolTip.SetToolTip(_keywordTextBox, "단축키 : Ctrl + F");
+        _paneToolTip.SetToolTip(_searchButton, "단축키 : Enter");
         searchInputPanel.Controls.Add(_searchButton, 1, 0);
         searchTargetPanel.Controls.Add(searchInputPanel, 0, 0);
 
@@ -190,13 +338,22 @@ public sealed class MainForm : Form
         {
             Anchor = AnchorStyles.Right,
             AutoSize = false,
-            Margin = new Padding(16, 9, 0, 9),
+            Margin = new Padding(8, 4, 0, 4),
+            UseIconMode = true,
         };
-        _searchTargetToggle.SelectedTargetChanged += (_, target) => SetSearchTarget(target);
+        // 토글 내부에서 파일명/문서내용 영역별 자체 툴팁 처리
+        _searchTargetToggle.SelectedTargetChanged += (_, target) =>
+        {
+            SetSearchTarget(target);
+            _settings.LastSearchTarget = target == SearchTarget.DocumentContent ? "DocumentContent" : "FileName";
+            _settings.Save();
+        };
         searchTargetPanel.Controls.Add(_searchTargetToggle, 1, 0);
+        _advancedButton.Margin = new Padding(4, TopVerticalMargin, 0, TopVerticalMargin);
+        searchTargetPanel.Controls.Add(_advancedButton, 2, 0);
 
-        root.SetColumnSpan(searchTargetPanel, 2);
-        root.Controls.Add(searchTargetPanel, 1, 2);
+        root.SetColumnSpan(searchTargetPanel, 3);
+        root.Controls.Add(searchTargetPanel, 0, 1);
 
         _statusLabel = new Label
         {
@@ -205,31 +362,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ForeColor = MutedTextColor,
         };
-
-        var creditLabel = new Label
-        {
-            AutoSize = true,
-            Anchor = AnchorStyles.Right,
-            Text = "Made by NX-JW",
-            TextAlign = ContentAlignment.MiddleRight,
-            ForeColor = MutedTextColor,
-            Margin = new Padding(0),
-        };
-
-        var statusPanel = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            Margin = new Padding(0),
-            BackColor = AppBackgroundColor,
-        };
-        statusPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        statusPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        statusPanel.Controls.Add(_statusLabel, 0, 0);
-        statusPanel.Controls.Add(creditLabel, 1, 0);
-
-        root.Controls.Add(statusPanel, 0, 4);
-        root.SetColumnSpan(statusPanel, 3);
+        // (statusPanel 생성/추가 코드 제거, _statusLabel은 Controls에 추가하지 않음)
         Program.Log("Action area created");
 
         _mainSplit = new SplitContainer
@@ -239,7 +372,7 @@ public sealed class MainForm : Form
             BackColor = AppBackgroundColor,
             Padding = new Padding(0, 4, 0, 0),
         };
-        root.Controls.Add(_mainSplit, 0, 3);
+        root.Controls.Add(_mainSplit, 0, 2);
         root.SetColumnSpan(_mainSplit, 3);
         _mainSplit.HandleCreated += (_, _) =>
         {
@@ -253,7 +386,7 @@ public sealed class MainForm : Form
         };
         Program.Log("Split created");
 
-        var leftPanel = BuildPane("검색 결과", "파일 리스트를 더블 클릭하면 파일이 열립니다.", out var leftContent);
+        var leftPanel = BuildPane(out var leftContent);
         _mainSplit.Panel1.Controls.Add(leftPanel);
         Program.Log("Left pane created");
 
@@ -281,19 +414,14 @@ public sealed class MainForm : Form
         _resultsGrid.DefaultCellStyle.SelectionBackColor = MintSelectionColor;
         _resultsGrid.DefaultCellStyle.SelectionForeColor = TextColor;
         _resultsGrid.DefaultCellStyle.Padding = new Padding(4, 2, 4, 2);
-        _resultsGrid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-        _resultsGrid.ColumnHeadersDefaultCellStyle.BackColor = AccentColor;
-        _resultsGrid.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
-        _resultsGrid.ColumnHeadersDefaultCellStyle.SelectionBackColor = AccentColor;
-        _resultsGrid.ColumnHeadersDefaultCellStyle.SelectionForeColor = Color.White;
-        _resultsGrid.ColumnHeadersDefaultCellStyle.Font = new Font(Font, FontStyle.Bold);
-        _resultsGrid.ColumnHeadersHeight = 34;
-        _resultsGrid.RowTemplate.Height = 30;
+        _resultsGrid.ColumnHeadersVisible = false;
+        _resultsGrid.RowTemplate.Height = 28;
         _resultsGrid.Columns.Add(new DataGridViewImageColumn
         {
             Name = "StatusIcon",
             HeaderText = "",
             Width = 22,
+            Visible = false,
             ImageLayout = DataGridViewImageCellLayout.Normal,
             ValuesAreIcons = false,
             DefaultCellStyle = new DataGridViewCellStyle
@@ -308,12 +436,13 @@ public sealed class MainForm : Form
             DataPropertyName = nameof(SearchResult.Status),
             HeaderText = "상태",
             Width = 70,
+            Visible = false,
         });
         _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
             DataPropertyName = nameof(SearchResult.FileName),
             HeaderText = "파일명",
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
             MinimumWidth = 180,
         });
         _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
@@ -322,6 +451,7 @@ public sealed class MainForm : Form
             HeaderText = "경로",
             AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
             MinimumWidth = 320,
+            Visible = false,
         });
         _resultsGrid.SelectionChanged += (_, _) => ShowSelectedPreview();
         _resultsGrid.CellDoubleClick += (_, _) => OpenSelectedFile();
@@ -332,7 +462,7 @@ public sealed class MainForm : Form
         leftContent.Controls.Add(_resultsGrid);
         Program.Log("Grid created");
 
-        var rightPanel = BuildPane("미리보기", "· 문서명을 클릭하면 해당 파일이 열립니다.\n· 경로를 클릭하면 해당 경로가 열립니다.", out var rightContent);
+        var rightPanel = BuildPane(out var rightContent);
         _mainSplit.Panel2.Controls.Add(rightPanel);
         Program.Log("Right pane created");
 
@@ -354,7 +484,7 @@ public sealed class MainForm : Form
             Margin = new Padding(0),
         };
         previewCard.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        previewCard.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+        previewCard.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
         previewShell.Controls.Add(previewCard);
 
         var previewContentPanel = new Panel
@@ -373,9 +503,9 @@ public sealed class MainForm : Form
             RowCount = 2,
             BackColor = Color.White,
             Margin = new Padding(0),
-            Padding = new Padding(18, 18, 18, 18),
+            Padding = new Padding(10, 8, 10, 8),
         };
-        previewContentInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 58F));
+        previewContentInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 0F)); // 파일명/경로 숨김
         previewContentInner.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         previewContentPanel.Controls.Add(previewContentInner);
 
@@ -395,7 +525,7 @@ public sealed class MainForm : Form
         _previewTitleLabel = new LinkLabel
         {
             Dock = DockStyle.Fill,
-            Font = new Font("Malgun Gothic", 12F, FontStyle.Bold, GraphicsUnit.Point),
+            Font = new Font("Malgun Gothic", 10F, FontStyle.Bold, GraphicsUnit.Point),
             ForeColor = TextColor,
             TextAlign = ContentAlignment.MiddleLeft,
             LinkColor = AccentColor,
@@ -443,7 +573,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ReadOnly = true,
             BorderStyle = BorderStyle.None,
-            Font = new Font("Malgun Gothic", 10.5F, FontStyle.Regular, GraphicsUnit.Point),
+            Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point),
             DetectUrls = false,
             HideSelection = true,
             BackColor = Color.White,
@@ -453,72 +583,49 @@ public sealed class MainForm : Form
         };
         previewBodyInnerPanel.Controls.Add(_previewBox);
 
-        var previewNavPanel = new Panel
+        var previewNavGroup = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(0),
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
             BackColor = SurfaceColor,
-            Padding = new Padding(0),
+            Padding = new Padding(4, 3, 4, 3),
+            Margin = new Padding(0),
         };
+        previewCard.Controls.Add(previewNavGroup, 0, 1);
 
-        var previewNavGroup = new TableLayoutPanel
+        _previewNextButton = new Button { Text = "→", Width = 36, Height = 22, Margin = new Padding(0, 0, 0, 0) };
+        StylePreviewNavButton(_previewNextButton);
+        _previewNextButton.Click += (_, _) => { if (IsNavButtonActive(_previewNextButton)) MovePreviewMatch(1); };
+        previewNavGroup.Controls.Add(_previewNextButton);
+
+        _previewPreviousButton = new Button { Text = "←", Width = 36, Height = 22, Margin = new Padding(0, 0, 4, 0) };
+        StylePreviewNavButton(_previewPreviousButton);
+        _previewPreviousButton.Click += (_, _) => { if (IsNavButtonActive(_previewPreviousButton)) MovePreviewMatch(-1); };
+        previewNavGroup.Controls.Add(_previewPreviousButton);
+        AttachNavTooltips(previewNavGroup);
+
+        _previewMatchLabel = new Label
         {
-            Anchor = AnchorStyles.Right | AnchorStyles.Bottom,
             AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 4,
-            RowCount = 1,
-            BackColor = SurfaceColor,
-            Padding = new Padding(10, 6, 10, 6),
-            Margin = new Padding(0),
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = MutedTextColor,
+            Margin = new Padding(0, 4, 8, 0),
         };
-        previewNavGroup.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        previewNavGroup.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        previewNavGroup.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        previewNavGroup.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        previewNavPanel.Controls.Add(previewNavGroup);
+        previewNavGroup.Controls.Add(_previewMatchLabel);
 
-        previewNavPanel.Resize += (_, _) =>
-        {
-            previewNavGroup.Location = new Point(
-                Math.Max(0, previewNavPanel.ClientSize.Width - previewNavGroup.Width),
-                Math.Max(0, previewNavPanel.ClientSize.Height - previewNavGroup.Height));
-        };
-
-        _previewExpandButton = new Button { Text = "전체 보기", Width = 102, Height = 34, Margin = new Padding(0, 0, 12, 0), Visible = false };
+        _previewExpandButton = new Button { Text = "전체 보기", Width = 70, Height = 22, Margin = new Padding(0, 0, 6, 0), Visible = false };
         StylePreviewNavButton(_previewExpandButton);
         _previewExpandButton.Click += (_, _) =>
         {
             _previewShowFullDocument = true;
             RenderSelectedPreview();
         };
-        previewNavGroup.Controls.Add(_previewExpandButton, 0, 0);
-
-        _previewMatchLabel = new Label
-        {
-            AutoSize = true,
-            Anchor = AnchorStyles.Left,
-            TextAlign = ContentAlignment.MiddleLeft,
-            ForeColor = MutedTextColor,
-            Margin = new Padding(0, 8, 12, 0),
-        };
-        previewNavGroup.Controls.Add(_previewMatchLabel, 1, 0);
-
-        _previewPreviousButton = new Button { Text = "이전 (A)", Width = 96, Height = 34, Margin = new Padding(0, 0, 8, 0) };
-        StylePreviewNavButton(_previewPreviousButton);
-        _previewPreviousButton.Click += (_, _) => MovePreviewMatch(-1);
-        previewNavGroup.Controls.Add(_previewPreviousButton, 2, 0);
-
-        _previewNextButton = new Button { Text = "다음 (S)", Width = 96, Height = 34, Margin = new Padding(0) };
-        StylePreviewNavButton(_previewNextButton);
-        _previewNextButton.Click += (_, _) => MovePreviewMatch(1);
-        previewNavGroup.Controls.Add(_previewNextButton, 3, 0);
-
-        previewCard.Controls.Add(previewNavPanel, 0, 1);
+        previewNavGroup.Controls.Add(_previewExpandButton);
         Program.Log("Preview box created");
     }
 
-    private Panel BuildPane(string title, string tooltipText, out Panel contentPanel)
+    private Panel BuildPane(out Panel contentPanel)
     {
         var panel = new Panel
         {
@@ -527,54 +634,6 @@ public sealed class MainForm : Form
             Padding = new Padding(1),
             Margin = new Padding(0, 0, 10, 0),
         };
-
-        var headerPanel = new Panel
-        {
-            Dock = DockStyle.Top,
-            Height = 34,
-            Margin = new Padding(0),
-            BackColor = SurfaceAccentColor,
-            Padding = new Padding(12, 0, 10, 0),
-        };
-
-        var headerContent = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Left,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            Margin = new Padding(0),
-            Padding = new Padding(0, 7, 0, 0),
-            BackColor = SurfaceAccentColor,
-        };
-
-        var titleLabel = new Label
-        {
-            Text = title,
-            AutoSize = true,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Margin = new Padding(0, 0, 4, 0),
-            BackColor = SurfaceAccentColor,
-            ForeColor = AccentColor,
-            Font = new Font("Malgun Gothic", 10F, FontStyle.Bold, GraphicsUnit.Point),
-        };
-
-        var infoIcon = new PictureBox
-        {
-            Width = 16,
-            Height = 16,
-            Margin = new Padding(0, 2, 0, 0),
-            Padding = new Padding(0),
-            Image = _infoIconImage,
-            SizeMode = PictureBoxSizeMode.Zoom,
-            Cursor = Cursors.Hand,
-        };
-
-        headerContent.Controls.Add(titleLabel);
-        headerContent.Controls.Add(infoIcon);
-        headerPanel.Controls.Add(headerContent);
-        _paneToolTip.SetToolTip(infoIcon, tooltipText);
 
         contentPanel = new Panel
         {
@@ -585,8 +644,473 @@ public sealed class MainForm : Form
         };
 
         panel.Controls.Add(contentPanel);
+        return panel;
+    }
+
+    private Panel BuildPaneWithHeader(string title, string tooltipText, out Panel contentPanel)
+    {
+        var panel = new Panel { Dock = DockStyle.Fill, BackColor = SurfaceAccentColor, Padding = new Padding(1), Margin = new Padding(0, 0, 10, 0) };
+        var headerPanel = new Panel { Dock = DockStyle.Top, Height = 24, BackColor = SurfaceAccentColor, Padding = new Padding(12, 0, 10, 0) };
+        var titleLabel = new Label
+        {
+            Text = title,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            BackColor = SurfaceAccentColor,
+            ForeColor = AccentColor,
+            Font = new Font("Malgun Gothic", 9F, FontStyle.Bold, GraphicsUnit.Point),
+        };
+        headerPanel.Controls.Add(titleLabel);
+        contentPanel = new Panel { Dock = DockStyle.Fill, BackColor = SurfaceColor };
+        panel.Controls.Add(contentPanel);
         panel.Controls.Add(headerPanel);
         return panel;
+    }
+
+    private void BuildDetailedLayout()
+    {
+        Program.Log("BuildDetailedLayout start");
+
+        Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point);
+        FormBorderStyle = FormBorderStyle.Sizable;
+        Size = new Size(1100, 840);
+        MinimumSize = new Size(900, 600);
+
+        var root = _root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 4,
+            Padding = new Padding(12, 10, 12, 4),
+            BackColor = AppBackgroundColor,
+        };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80F));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160F));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38F)); // row 0: 검색 폴더
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F)); // row 1: 검색어
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // row 2: 결과/미리보기
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F)); // row 3: 상태바
+        Controls.Add(root);
+        Program.Log("Detailed root created");
+
+        // row 0: 검색 폴더
+        root.Controls.Add(CreateFieldLabel("검색 폴더"), 0, 0);
+        _folderTextBox = CreateInputTextBox();
+        _folderTextBox.ReadOnly = true;
+        _folderTextBox.TabStop = false;
+        root.Controls.Add(CreateInputHost(_folderTextBox), 1, 0);
+
+        var folderButtonPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+            BackColor = AppBackgroundColor,
+        };
+        folderButtonPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        folderButtonPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 42F));
+        folderButtonPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+        _browseFolderButton = new Button { Text = "폴더 설정", Anchor = AnchorStyles.Left | AnchorStyles.Right };
+        StyleActionButton(_browseFolderButton);
+        _browseFolderButton.Click += async (_, _) => await PickFolderAsync();
+        folderButtonPanel.Controls.Add(_browseFolderButton, 0, 0);
+
+        _advancedButton = new Button
+        {
+            Text = "\uE90F",
+            Anchor = AnchorStyles.Left | AnchorStyles.Right,
+            Font = new Font("Segoe MDL2 Assets", 10F, FontStyle.Regular, GraphicsUnit.Point),
+            Width = 42,
+        };
+        StyleAdvancedButton(_advancedButton, false);
+        _advancedButton.Margin = new Padding(4, 4, 0, 4);
+        _advancedButton.Click += (_, _) =>
+        {
+            using var settingsForm = new SettingsForm(_settings);
+            if (settingsForm.ShowDialog(this) == DialogResult.OK)
+            {
+                _settings.Save();
+                Application.Restart();
+            }
+        };
+        folderButtonPanel.Controls.Add(_advancedButton, 1, 0);
+        root.Controls.Add(folderButtonPanel, 2, 0);
+        Program.Log("Detailed top area created");
+
+        // row 1: 검색어
+        root.Controls.Add(CreateFieldLabel("검색어"), 0, 1);
+
+        var searchTargetPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 1,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+            BackColor = AppBackgroundColor,
+        };
+        searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150F));
+        searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180F));
+        searchTargetPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+
+        var searchInputPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 1,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+            BackColor = AppBackgroundColor,
+        };
+        searchInputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        searchInputPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+
+        _keywordTextBox = CreateInputTextBox();
+        _keywordTextBox.Font = new Font("Malgun Gothic", 11F, FontStyle.Regular, GraphicsUnit.Point);
+        _keywordTextBox.KeyDown += KeywordTextBoxOnKeyDown;
+        _keywordTextBox.Enter += (_, _) => UpdateSearchButtonVisualState();
+        _keywordTextBox.Leave += (_, _) => BeginInvoke((Action)UpdateSearchButtonVisualState);
+        _keywordTextBox.TextChanged += KeywordTextBoxOnTextChanged;
+        var keywordInputHost = CreateInputHost(_keywordTextBox);
+        keywordInputHost.Dock = DockStyle.Fill;
+        searchInputPanel.Controls.Add(keywordInputHost, 0, 0);
+        searchTargetPanel.Controls.Add(searchInputPanel, 0, 0);
+
+        _searchButton = new Button
+        {
+            Text = "검색",
+            Width = 150,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right,
+            Font = new Font("Malgun Gothic", 11F, FontStyle.Bold, GraphicsUnit.Point),
+        };
+        StyleActionButton(_searchButton);
+        _searchButton.Margin = new Padding(4, TopVerticalMargin, 0, TopVerticalMargin);
+        _searchButton.Height = 32;
+        _searchButton.Click += async (_, _) => { if (_searchButton.Tag is true) await RequestSearchAsync(); };
+        _paneToolTip.SetToolTip(_searchButton, "단축키 : Enter");
+        _paneToolTip.SetToolTip(_keywordTextBox, "단축키 : Ctrl + F");
+        searchTargetPanel.Controls.Add(_searchButton, 1, 0);
+
+        _searchTargetToggle = new SearchTargetToggle
+        {
+            Anchor = AnchorStyles.Right,
+            AutoSize = false,
+            Size = new Size(180, 24),
+            Margin = new Padding(16, 9, 0, 9),
+            UseIconMode = false,
+        };
+        _searchTargetToggle.SelectedTargetChanged += (_, target) =>
+        {
+            SetSearchTarget(target);
+            _settings.LastSearchTarget = target == SearchTarget.DocumentContent ? "DocumentContent" : "FileName";
+            _settings.Save();
+        };
+        // 토글 내부에서 파일명/문서내용 영역별 자체 툴팁 처리
+        searchTargetPanel.Controls.Add(_searchTargetToggle, 2, 0);
+
+        root.SetColumnSpan(searchTargetPanel, 2);
+        root.Controls.Add(searchTargetPanel, 1, 1);
+        Program.Log("Detailed search area created");
+
+        // row 2: SplitContainer
+        _mainSplit = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Vertical,
+            BackColor = AppBackgroundColor,
+            Padding = new Padding(0, 4, 0, 0),
+        };
+        root.Controls.Add(_mainSplit, 0, 2);
+        root.SetColumnSpan(_mainSplit, 3);
+        _mainSplit.HandleCreated += (_, _) =>
+        {
+            _mainSplit.Panel1MinSize = 360;
+            _mainSplit.Panel2MinSize = 360;
+            ApplyMainSplitRatio();
+        };
+        _mainSplit.SizeChanged += (_, _) =>
+        {
+            ApplyMainSplitRatio();
+        };
+        Program.Log("Detailed split created");
+
+        var leftPanel = BuildPaneWithHeader("검색 결과", "", out var leftContent);
+        _mainSplit.Panel1.Controls.Add(leftPanel);
+        Program.Log("Detailed left pane created");
+
+        _resultsGrid = new DataGridView
+        {
+            Dock = DockStyle.Fill,
+            AutoGenerateColumns = false,
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            AllowUserToResizeRows = false,
+            ReadOnly = true,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            MultiSelect = false,
+            RowHeadersVisible = false,
+            DataSource = _results,
+            BackgroundColor = SurfaceColor,
+            BorderStyle = BorderStyle.None,
+            GridColor = BorderColor,
+            EnableHeadersVisualStyles = false,
+            ScrollBars = ScrollBars.Both,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
+            ColumnHeadersVisible = true,
+            RowTemplate = { Height = 30 },
+            ColumnHeadersHeight = 34,
+        };
+        _resultsGrid.DefaultCellStyle.BackColor = SurfaceColor;
+        _resultsGrid.DefaultCellStyle.ForeColor = TextColor;
+        _resultsGrid.DefaultCellStyle.SelectionBackColor = MintSelectionColor;
+        _resultsGrid.DefaultCellStyle.SelectionForeColor = TextColor;
+        _resultsGrid.DefaultCellStyle.Padding = new Padding(4, 2, 4, 2);
+        _resultsGrid.ColumnHeadersDefaultCellStyle.BackColor = AccentColor;
+        _resultsGrid.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
+        _resultsGrid.ColumnHeadersDefaultCellStyle.Font = new Font("Malgun Gothic", 8.5F, FontStyle.Bold, GraphicsUnit.Point);
+        _resultsGrid.Columns.Add(new DataGridViewImageColumn
+        {
+            Name = "StatusIcon",
+            HeaderText = "",
+            Width = 22,
+            Visible = true,
+            ImageLayout = DataGridViewImageCellLayout.Normal,
+            ValuesAreIcons = false,
+            DefaultCellStyle = new DataGridViewCellStyle
+            {
+                Alignment = DataGridViewContentAlignment.MiddleCenter,
+                NullValue = null,
+                Padding = new Padding(0),
+            },
+        });
+        _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            DataPropertyName = nameof(SearchResult.Status),
+            HeaderText = "상태",
+            Width = 70,
+            Visible = false,
+        });
+        _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            DataPropertyName = nameof(SearchResult.FileName),
+            HeaderText = "파일명",
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
+            MinimumWidth = 180,
+        });
+        _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            DataPropertyName = nameof(SearchResult.DirectoryPath),
+            HeaderText = "경로",
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
+            MinimumWidth = 320,
+            Visible = true,
+        });
+        _resultsGrid.SelectionChanged += (_, _) => ShowSelectedPreview();
+        _resultsGrid.CellDoubleClick += (_, _) => OpenSelectedFile();
+        _resultsGrid.CellFormatting += ResultsGridOnCellFormatting;
+        _resultsGrid.CellToolTipTextNeeded += ResultsGridOnCellToolTipTextNeeded;
+        _resultsGrid.CellPainting += ResultsGridOnCellPainting;
+        _resultsGrid.DataError += (_, e) => e.ThrowException = false;
+        leftContent.Controls.Add(_resultsGrid);
+        Program.Log("Detailed grid created");
+
+        var rightPanel = BuildPaneWithHeader("미리보기", "", out var rightContent);
+        _mainSplit.Panel2.Controls.Add(rightPanel);
+        Program.Log("Detailed right pane created");
+
+        var previewShell = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = SurfaceColor,
+            Padding = new Padding(0),
+        };
+        rightContent.Controls.Add(previewShell);
+
+        var previewCard = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            BackColor = SurfaceColor,
+            Padding = new Padding(18, 18, 18, 0),
+            Margin = new Padding(0),
+        };
+        previewCard.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        previewCard.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+        previewShell.Controls.Add(previewCard);
+
+        var previewContentPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = SurfaceAccentColor,
+            Margin = new Padding(0),
+            Padding = new Padding(1),
+        };
+        previewCard.Controls.Add(previewContentPanel, 0, 0);
+
+        var previewContentInner = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            BackColor = Color.White,
+            Margin = new Padding(0),
+            Padding = new Padding(10, 8, 10, 8),
+        };
+        previewContentInner.RowStyles.Add(new RowStyle(SizeType.Absolute, 58F)); // 파일명+경로 표시
+        previewContentInner.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        previewContentPanel.Controls.Add(previewContentInner);
+
+        var previewHeaderPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            BackColor = Color.White,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+        };
+        previewHeaderPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+        previewHeaderPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
+        previewContentInner.Controls.Add(previewHeaderPanel, 0, 0);
+
+        _previewTitleLabel = new LinkLabel
+        {
+            Dock = DockStyle.Fill,
+            Font = new Font("Malgun Gothic", 10F, FontStyle.Bold, GraphicsUnit.Point),
+            ForeColor = TextColor,
+            TextAlign = ContentAlignment.MiddleLeft,
+            LinkColor = AccentColor,
+            ActiveLinkColor = AccentColor,
+            VisitedLinkColor = AccentColor,
+            LinkBehavior = LinkBehavior.HoverUnderline,
+        };
+        _previewTitleLabel.LinkClicked += PreviewTitleLabelOnLinkClicked;
+        previewHeaderPanel.Controls.Add(_previewTitleLabel, 0, 0);
+
+        _previewMetaLabel = new LinkLabel
+        {
+            Dock = DockStyle.Fill,
+            Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point),
+            ForeColor = MutedTextColor,
+            TextAlign = ContentAlignment.MiddleLeft,
+            LinkColor = AccentColor,
+            ActiveLinkColor = AccentColor,
+            VisitedLinkColor = AccentColor,
+            LinkBehavior = LinkBehavior.HoverUnderline,
+        };
+        _previewMetaLabel.LinkClicked += PreviewMetaLabelOnLinkClicked;
+        previewHeaderPanel.Controls.Add(_previewMetaLabel, 0, 1);
+
+        var previewBodyPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = SurfaceAccentColor,
+            Margin = new Padding(0),
+            Padding = new Padding(1),
+        };
+        previewContentInner.Controls.Add(previewBodyPanel, 0, 1);
+
+        var previewBodyInnerPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.White,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+        };
+        previewBodyPanel.Controls.Add(previewBodyInnerPanel);
+
+        _previewBox = new RichTextBox
+        {
+            Dock = DockStyle.Fill,
+            ReadOnly = true,
+            BorderStyle = BorderStyle.None,
+            Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point),
+            DetectUrls = false,
+            HideSelection = true,
+            BackColor = Color.White,
+            ForeColor = TextColor,
+            ScrollBars = RichTextBoxScrollBars.Both,
+            WordWrap = false,
+        };
+        previewBodyInnerPanel.Controls.Add(_previewBox);
+
+        var previewNavGroup = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            BackColor = SurfaceColor,
+            Padding = new Padding(4, 3, 4, 3),
+            Margin = new Padding(0),
+        };
+        previewCard.Controls.Add(previewNavGroup, 0, 1);
+
+        _previewNextButton = new Button { Text = "다음 →", Width = 80, Height = 24, Margin = new Padding(0, 0, 0, 0) };
+        StylePreviewNavButton(_previewNextButton);
+        _previewNextButton.Click += (_, _) => { if (IsNavButtonActive(_previewNextButton)) MovePreviewMatch(1); };
+        previewNavGroup.Controls.Add(_previewNextButton);
+
+        _previewPreviousButton = new Button { Text = "← 이전", Width = 80, Height = 24, Margin = new Padding(0, 0, 4, 0) };
+        StylePreviewNavButton(_previewPreviousButton);
+        _previewPreviousButton.Click += (_, _) => { if (IsNavButtonActive(_previewPreviousButton)) MovePreviewMatch(-1); };
+        previewNavGroup.Controls.Add(_previewPreviousButton);
+        AttachNavTooltips(previewNavGroup);
+
+        _previewMatchLabel = new Label
+        {
+            AutoSize = true,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = MutedTextColor,
+            Margin = new Padding(0, 4, 8, 0),
+        };
+        previewNavGroup.Controls.Add(_previewMatchLabel);
+
+        _previewExpandButton = new Button { Text = "전체 보기", Width = 70, Height = 22, Margin = new Padding(0, 0, 6, 0), Visible = false };
+        StylePreviewNavButton(_previewExpandButton);
+        _previewExpandButton.Click += (_, _) =>
+        {
+            _previewShowFullDocument = true;
+            RenderSelectedPreview();
+        };
+        previewNavGroup.Controls.Add(_previewExpandButton);
+
+        // row 3: 상태바
+        var statusBarPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = AppBackgroundColor,
+            Margin = new Padding(0),
+            Padding = new Padding(4, 0, 4, 0),
+        };
+        _statusLabel = new Label
+        {
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Dock = DockStyle.Fill,
+            ForeColor = MutedTextColor,
+        };
+        var madeByLabel = new Label
+        {
+            Text = "Made by NX-JW",
+            AutoSize = false,
+            Width = 120,
+            TextAlign = ContentAlignment.MiddleRight,
+            Dock = DockStyle.Right,
+            ForeColor = MutedTextColor,
+            Font = new Font("Malgun Gothic", 7.5F, FontStyle.Regular, GraphicsUnit.Point),
+        };
+        statusBarPanel.Controls.Add(_statusLabel);
+        statusBarPanel.Controls.Add(madeByLabel);
+        root.Controls.Add(statusBarPanel, 0, 3);
+        root.SetColumnSpan(statusBarPanel, 3);
+
+        Program.Log("BuildDetailedLayout done");
     }
 
     private static ToolTip CreatePaneToolTip()
@@ -655,13 +1179,22 @@ public sealed class MainForm : Form
 
     private static Bitmap CreateFailureIcon()
     {
-        using var source = SystemIcons.Warning.ToBitmap();
         var bitmap = new Bitmap(12, 12);
         using var graphics = Graphics.FromImage(bitmap);
         graphics.Clear(Color.Transparent);
         graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-        graphics.DrawImage(source, new Rectangle(0, 0, 12, 12));
+
+        using var fillBrush = new SolidBrush(Color.FromArgb(220, 53, 53));
+        graphics.FillEllipse(fillBrush, 0.5F, 0.5F, 11F, 11F);
+
+        using var pen = new Pen(Color.White, 1.6F)
+        {
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            EndCap = System.Drawing.Drawing2D.LineCap.Round,
+        };
+        graphics.DrawLine(pen, 3.5F, 3.5F, 8.5F, 8.5F);
+        graphics.DrawLine(pen, 8.5F, 3.5F, 3.5F, 8.5F);
+
         return bitmap;
     }
 
@@ -683,29 +1216,80 @@ public sealed class MainForm : Form
         _mainSplit.SplitterDistance = Math.Max(_mainSplit.Panel1MinSize, Math.Min(target, maxLeft));
     }
 
+    private bool IsSimpleMode => _settings.LayoutMode == "Simple";
+
+    private int _titleBarHeight = 30;
+
+    protected override void WndProc(ref Message m)
+    {
+        base.WndProc(ref m);
+        const int WM_NCHITTEST = 0x84;
+        const int HTCLIENT = 1;
+        const int HTCAPTION = 2;
+        if (m.Msg == WM_NCHITTEST && m.Result == (IntPtr)HTCLIENT)
+        {
+            var pos = PointToClient(Cursor.Position);
+            if (pos.Y < _titleBarHeight)
+                m.Result = (IntPtr)HTCAPTION;
+        }
+    }
+
+    private void ApplyLayoutMode()
+    {
+        if (!IsSimpleMode) return;
+        _root.SuspendLayout();
+        // Simple 모드는 이미 BuildSimpleLayout으로 구성됐으므로
+        // 창 크기만 설정
+        MinimumSize = new Size(400, 200);
+        if (Size.Width > 700 || Size.Height > 500)
+            Size = new Size(550, 400);
+        _root.ResumeLayout(true);
+    }
+
     private void BindInitialState()
     {
         _folderTextBox.Text = string.IsNullOrWhiteSpace(_settings.LastFolder)
             ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
             : _settings.LastFolder;
-        _patternTextBox.Text = DocumentSearcher.DefaultPatterns;
         _currentIndex = DocumentIndexStore.Load();
         _statusLabel.Text = "대기 중";
-        SetSearchTarget(SearchTarget.FileName);
+        var savedTarget = _settings.LastSearchTarget == "DocumentContent"
+            ? SearchTarget.DocumentContent
+            : SearchTarget.FileName;
+        SetSearchTarget(savedTarget);
         ClearPreviewPanel();
         UpdateSearchButtonVisualState();
+        ApplyLayoutMode();
     }
 
     private void KeywordTextBoxOnKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.KeyCode != Keys.Enter)
+        if (e.KeyCode == Keys.Enter)
         {
+            e.SuppressKeyPress = true;
+            e.Handled = true;
+            if (_searchButton.Tag is true)
+                _ = RequestSearchAsync();
+            else if (!_isSearchBusy)
+                ShowSearchBlockedMessage();
             return;
         }
 
-        e.SuppressKeyPress = true;
-        e.Handled = true;
-        _ = RequestSearchAsync();
+        if (e.Control && e.KeyCode == Keys.A)
+        {
+            SetSearchTarget(SearchTarget.FileName);
+            e.SuppressKeyPress = true;
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Control && e.KeyCode == Keys.S)
+        {
+            SetSearchTarget(SearchTarget.DocumentContent);
+            e.SuppressKeyPress = true;
+            e.Handled = true;
+            return;
+        }
     }
 
     private void KeywordTextBoxOnTextChanged(object? sender, EventArgs e)
@@ -722,34 +1306,45 @@ public sealed class MainForm : Form
             return true;
         }
 
-        if (keyData == Keys.Enter && _searchButton.Enabled)
+        if (keyData == Keys.Enter)
         {
-            _ = RequestSearchAsync();
+            if (_searchButton.Tag is true)
+            {
+                _ = RequestSearchAsync();
+                return true;
+            }
+
+            if (!_isSearchBusy)
+            {
+                ShowSearchBlockedMessage();
+                return true;
+            }
+        }
+
+        if (keyData == (Keys.Control | Keys.A))
+        {
+            SetSearchTarget(SearchTarget.FileName);
+            _keywordTextBox.Focus();
             return true;
         }
 
-        if (keyData is Keys.Q or Keys.W)
+        if (keyData == (Keys.Control | Keys.S))
+        {
+            SetSearchTarget(SearchTarget.DocumentContent);
+            _keywordTextBox.Focus();
+            return true;
+        }
+
+        if (keyData is Keys.Z or Keys.X)
         {
             var focusedControl = ActiveControl;
             if (focusedControl is not TextBoxBase)
             {
-                SetSearchTarget(keyData == Keys.Q ? SearchTarget.FileName : SearchTarget.DocumentContent);
-                return true;
-            }
-        }
-
-        if (keyData is Keys.A or Keys.S)
-        {
-            var focusedControl = ActiveControl;
-            if (focusedControl is TextBoxBase)
-            {
-                return base.ProcessCmdKey(ref msg, keyData);
-            }
-
-            if (_searchTarget == SearchTarget.DocumentContent && _selectedPreviewResult is not null)
-            {
-                MovePreviewMatch(keyData == Keys.A ? -1 : 1);
-                return true;
+                if (_searchTarget == SearchTarget.DocumentContent && _selectedPreviewResult is not null)
+                {
+                    MovePreviewMatch(keyData == Keys.Z ? -1 : 1);
+                    return true;
+                }
             }
         }
 
@@ -824,6 +1419,7 @@ public sealed class MainForm : Form
         }
 
         _folderTextBox.Text = dialog.SelectedPath;
+        UpdateSearchButtonVisualState();
         SaveLastFolder(dialog.SelectedPath);
         var indexed = await EnsureIndexReadyAsync(forceRebuild: false);
         if (indexed && _currentIndex is not null)
@@ -839,7 +1435,7 @@ public sealed class MainForm : Form
 
     private string[] GetCurrentPatterns()
     {
-        return _patternTextBox.Text
+        return _settings.SearchPatterns
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(static item => !string.IsNullOrWhiteSpace(item))
             .ToArray();
@@ -968,7 +1564,7 @@ public sealed class MainForm : Form
         var rootFolder = _folderTextBox.Text.Trim();
         if (!Directory.Exists(rootFolder))
         {
-            MessageBox.Show(this, "유효한 폴더를 선택해야 해.", "폴더 오류");
+            MessageBox.Show(this, "유효한 폴더를 선택해야 해.", "알림");
             return;
         }
 
@@ -976,7 +1572,7 @@ public sealed class MainForm : Form
 
         if (patterns.Length == 0)
         {
-            MessageBox.Show(this, "적어도 하나의 확장자 패턴이 필요해.", "패턴 오류");
+            MessageBox.Show(this, "검색 확장자가 하나 이상 있어야 해요.\n설정에서 확장자를 추가해주세요.", "알림");
             return;
         }
 
@@ -996,6 +1592,7 @@ public sealed class MainForm : Form
         SetBusyState(true);
         _restartRequested = false;
 
+        _searchCts?.Dispose();
         _searchCts = new CancellationTokenSource();
         var progress = new Progress<SearchProgress>(HandleProgress);
 
@@ -1051,7 +1648,7 @@ public sealed class MainForm : Form
             {
                 _resultsGrid.ClearSelection();
                 _resultsGrid.Rows[0].Selected = true;
-                _resultsGrid.CurrentCell = _resultsGrid.Rows[0].Cells[1];
+                _resultsGrid.CurrentCell = _resultsGrid.Rows[0].Cells[2]; // 파일명 컬럼 (index 2, Visible)
             }
         }
     }
@@ -1061,9 +1658,7 @@ public sealed class MainForm : Form
         _isSearchBusy = busy;
         _folderTextBox.Enabled = !busy;
         _keywordTextBox.Enabled = !busy;
-        _patternTextBox.Enabled = !busy;
         _browseFolderButton.Enabled = !busy;
-        _resetPatternButton.Enabled = !busy;
         _searchTargetToggle.Enabled = !busy;
 
         if (busy)
@@ -1081,6 +1676,14 @@ public sealed class MainForm : Form
         _statusLabel.Text = "대기 중";
     }
 
+    private void ShowSearchBlockedMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_folderTextBox.Text))
+        {
+            MessageBox.Show(this, "검색 폴더를 먼저 설정해주세요.", "알림");
+        }
+    }
+
     private void UpdateSearchButtonVisualState()
     {
         if (_searchButton is null)
@@ -1089,17 +1692,20 @@ public sealed class MainForm : Form
         }
 
         var hasKeyword = !string.IsNullOrWhiteSpace(_keywordTextBox.Text);
-        _searchButton.Enabled = !_isSearchBusy && hasKeyword;
+        var hasFolder = !string.IsNullOrWhiteSpace(_folderTextBox.Text);
+        var canSearch = !_isSearchBusy && hasKeyword && hasFolder;
+        _searchButton.Tag = canSearch;
+        _searchButton.Cursor = canSearch ? Cursors.Hand : Cursors.Default;
 
-        if (!_searchButton.Enabled)
+        if (!canSearch)
         {
-            _searchButton.BackColor = DisabledButtonBackColor;
-            _searchButton.ForeColor = DisabledButtonForeColor;
+            _searchButton.BackColor = NavInactiveBackColor;
+            _searchButton.ForeColor = NavInactiveForeColor;
             return;
         }
 
-        _searchButton.BackColor = hasKeyword ? AccentColor : DisabledButtonBackColor;
-        _searchButton.ForeColor = hasKeyword ? Color.White : DisabledButtonForeColor;
+        _searchButton.BackColor = AccentColor;
+        _searchButton.ForeColor = Color.White;
     }
 
     private void RefreshResultColumnWidths()
@@ -1164,6 +1770,7 @@ public sealed class MainForm : Form
         }
 
         host.Resize += (_, _) => LayoutTextBox();
+        host.Layout += (_, _) => LayoutTextBox();
         host.MouseDown += (_, _) =>
         {
             if (isReadOnly)
@@ -1186,10 +1793,25 @@ public sealed class MainForm : Form
         return host;
     }
 
+    private static void StyleAdvancedButton(Button button, bool active)
+    {
+        button.FlatStyle = FlatStyle.Flat;
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.BorderColor = active ? Color.FromArgb(196, 108, 109) : Color.FromArgb(210, 195, 190);
+        button.BackColor = active ? Color.FromArgb(196, 108, 109) : Color.FromArgb(255, 247, 242);
+        button.ForeColor = active ? Color.White : Color.FromArgb(160, 140, 140);
+        button.Margin = new Padding(4, TopVerticalMargin, 0, TopVerticalMargin);
+        button.Height = TopControlHeight;
+        button.AutoSize = false;
+        button.TextAlign = ContentAlignment.MiddleCenter;
+        button.UseVisualStyleBackColor = false;
+    }
+
     private static void StyleActionButton(Button button)
     {
         button.FlatStyle = FlatStyle.Flat;
-        button.FlatAppearance.BorderSize = 0;
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.BorderColor = NavBorderColor;
         button.BackColor = AccentColor;
         button.ForeColor = Color.White;
         button.Padding = new Padding(14, 0, 14, 0);
@@ -1200,15 +1822,64 @@ public sealed class MainForm : Form
         button.UseVisualStyleBackColor = false;
     }
 
+    private static readonly Color NavActiveBackColor = Color.FromArgb(196, 108, 109);
+    private static readonly Color NavActiveForeColor = Color.White;
+    private static readonly Color NavInactiveBackColor = Color.FromArgb(255, 252, 248);
+    private static readonly Color NavInactiveForeColor = Color.FromArgb(210, 200, 205);
+    private static readonly Color NavBorderColor = Color.FromArgb(210, 168, 170);
+
     private static void StylePreviewNavButton(Button button)
     {
         button.FlatStyle = FlatStyle.Flat;
         button.FlatAppearance.BorderSize = 1;
-        button.FlatAppearance.BorderColor = BorderColor;
-        button.BackColor = SurfaceColor;
-        button.ForeColor = TextColor;
+        button.FlatAppearance.BorderColor = NavBorderColor;
+        button.BackColor = NavInactiveBackColor;
+        button.ForeColor = NavInactiveForeColor;
         button.TextAlign = ContentAlignment.MiddleCenter;
         button.UseVisualStyleBackColor = false;
+        button.Tag = false; // 논리적 활성 상태
+    }
+
+    private static void SetNavButtonActive(Button button, bool active)
+    {
+        button.Tag = active;
+        button.Cursor = active ? Cursors.Hand : Cursors.Default;
+        if (active)
+        {
+            button.BackColor = NavActiveBackColor;
+            button.ForeColor = NavActiveForeColor;
+        }
+        else
+        {
+            button.BackColor = NavInactiveBackColor;
+            button.ForeColor = NavInactiveForeColor;
+        }
+    }
+
+    private static bool IsNavButtonActive(Button button) => button.Tag is true;
+
+    /// <summary>
+    /// 비활성화 버튼에도 툴팁이 뜨도록 부모 FlowLayoutPanel의 MouseMove에서 처리.
+    /// </summary>
+    private void AttachNavTooltips(FlowLayoutPanel navGroup)
+    {
+        navGroup.MouseMove += (_, e) =>
+        {
+            var pt = navGroup.PointToClient(Cursor.Position);
+            string? tip = null;
+            if (_previewPreviousButton.Bounds.Contains(pt))
+                tip = "단축키 : Z";
+            else if (_previewNextButton.Bounds.Contains(pt))
+                tip = "단축키 : X";
+
+            var current = _paneToolTip.GetToolTip(navGroup);
+            if (current != tip)
+                _paneToolTip.SetToolTip(navGroup, tip);
+        };
+        navGroup.MouseLeave += (_, _) => _paneToolTip.SetToolTip(navGroup, null);
+        // 활성 상태일 때도 동일 툴팁
+        _paneToolTip.SetToolTip(_previewPreviousButton, "단축키 : Z");
+        _paneToolTip.SetToolTip(_previewNextButton, "단축키 : X");
     }
 
     private void SetSearchTarget(SearchTarget searchTarget)
@@ -1284,7 +1955,9 @@ public sealed class MainForm : Form
         _previewMetaLabel.Links.Clear();
         _previewMetaLabel.Links.Add(0, _previewMetaLabel.Text.Length, _selectedPreviewResult.DirectoryPath);
         var previewExtension = Path.GetExtension(_selectedPreviewResult.Path);
+        var oldFont = _previewBox.Font;
         _previewBox.Font = GetPreviewFont(previewExtension);
+        oldFont?.Dispose();
         ConfigurePreviewBoxLayout(previewExtension);
         var selectedMatchIndexInPreview = -1;
         var previewBody = preview.Body;
@@ -1315,8 +1988,8 @@ public sealed class MainForm : Form
         var hasMultipleMatches = preview.Matches.Count > 1;
         _previewExpandButton.Visible = _searchTarget == SearchTarget.DocumentContent && preview.IsTruncated;
         _previewExpandButton.Enabled = preview.IsTruncated;
-        _previewPreviousButton.Enabled = hasMultipleMatches && _selectedPreviewMatchIndex > 0;
-        _previewNextButton.Enabled = hasMultipleMatches && _selectedPreviewMatchIndex < preview.Matches.Count - 1;
+        SetNavButtonActive(_previewPreviousButton, hasMultipleMatches && _selectedPreviewMatchIndex > 0);
+        SetNavButtonActive(_previewNextButton, hasMultipleMatches && _selectedPreviewMatchIndex < preview.Matches.Count - 1);
         _previewMatchLabel.Text = preview.Matches.Count == 0
             ? "검색 위치 정보 없음"
             : $"검색 위치 {_selectedPreviewMatchIndex + 1} / {preview.Matches.Count} · 줄 {preview.Matches[_selectedPreviewMatchIndex].LineNumber}";
@@ -1351,8 +2024,8 @@ public sealed class MainForm : Form
         _previewMatchLabel.Text = string.Empty;
         _previewExpandButton.Visible = false;
         _previewExpandButton.Enabled = false;
-        _previewPreviousButton.Enabled = false;
-        _previewNextButton.Enabled = false;
+        SetNavButtonActive(_previewPreviousButton, false);
+        SetNavButtonActive(_previewNextButton, false);
         _previewBox.Clear();
     }
 
@@ -1591,6 +2264,9 @@ public sealed class MainForm : Form
 public sealed class AppSettings
 {
     public string LastFolder { get; set; } = string.Empty;
+    public string LastSearchTarget { get; set; } = "FileName";
+    public string LayoutMode { get; set; } = "Detailed";
+    public string SearchPatterns { get; set; } = DocumentSearcher.DefaultPatterns;
 
     public static AppSettings Load()
     {

@@ -9,8 +9,21 @@ internal sealed class SearchTargetToggle : Control
     private Rectangle _fileNameRect;
     private Rectangle _contentRect;
     private SearchTarget _selectedTarget = SearchTarget.FileName;
+    private readonly ToolTip _toolTip = new()
+    {
+        AutomaticDelay = 1,
+        InitialDelay = 1,
+        ReshowDelay = 1,
+        AutoPopDelay = 20000,
+        ShowAlways = true,
+        UseAnimation = false,
+        UseFading = false,
+    };
+    private string? _currentTooltipZone;
 
     public event EventHandler<SearchTarget>? SelectedTargetChanged;
+
+    public bool UseIconMode { get; set; } = false;
 
     public SearchTarget SelectedTarget
     {
@@ -32,8 +45,8 @@ internal sealed class SearchTargetToggle : Control
     {
         DoubleBuffered = true;
         ResizeRedraw = true;
-        Size = new Size(220, 24);
-        MinimumSize = new Size(220, 24);
+        Size = new Size(66, 22);
+        MinimumSize = new Size(66, 22);
         Cursor = Cursors.Hand;
         Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point);
         UpdateLayoutRects();
@@ -43,6 +56,45 @@ internal sealed class SearchTargetToggle : Control
     {
         base.OnResize(e);
         UpdateLayoutRects();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _toolTip?.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        string? zone = null;
+        string? tip = null;
+        if (_fileNameRect.Contains(e.Location))
+        {
+            zone = "filename";
+            tip = "단축키 : Ctrl + A";
+        }
+        else if (_contentRect.Contains(e.Location))
+        {
+            zone = "content";
+            tip = "단축키 : Ctrl + S";
+        }
+
+        if (zone != _currentTooltipZone)
+        {
+            _currentTooltipZone = zone;
+            _toolTip.SetToolTip(this, tip);
+        }
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        base.OnMouseLeave(e);
+        _currentTooltipZone = null;
+        _toolTip.SetToolTip(this, null);
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
@@ -86,8 +138,17 @@ internal sealed class SearchTargetToggle : Control
         e.Graphics.DrawLine(dividerPen, _contentRect.Left, 3, _contentRect.Left, Height - 4);
         e.Graphics.DrawPath(borderPen, outerPath);
 
-        DrawLabel(e.Graphics, _fileNameRect, "\uD30C\uC77C\uBA85 (Q)", _selectedTarget == SearchTarget.FileName, Font);
-        DrawLabel(e.Graphics, _contentRect, "\uBB38\uC11C \uB0B4\uC6A9 (W)", _selectedTarget == SearchTarget.DocumentContent, Font);
+        if (UseIconMode)
+        {
+            using var iconFont = new Font("Segoe MDL2 Assets", 10F, FontStyle.Regular, GraphicsUnit.Point);
+            DrawLabel(e.Graphics, _fileNameRect, "\uE8A5", _selectedTarget == SearchTarget.FileName, iconFont);
+            DrawLabel(e.Graphics, _contentRect, "\uE721", _selectedTarget == SearchTarget.DocumentContent, iconFont);
+        }
+        else
+        {
+            DrawLabel(e.Graphics, _fileNameRect, "파일명", _selectedTarget == SearchTarget.FileName, Font);
+            DrawLabel(e.Graphics, _contentRect, "문서 내용", _selectedTarget == SearchTarget.DocumentContent, Font);
+        }
     }
 
     private void UpdateLayoutRects()
@@ -105,7 +166,7 @@ internal sealed class SearchTargetToggle : Control
 
     private static void DrawLabel(Graphics graphics, Rectangle rect, string text, bool selected, Font font)
     {
-        var color = selected ? Color.White : Color.FromArgb(150, 136, 142);
+        var color = selected ? Color.White : Color.FromArgb(195, 182, 188);
         TextRenderer.DrawText(
             graphics,
             text,

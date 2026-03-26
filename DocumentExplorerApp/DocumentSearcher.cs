@@ -766,10 +766,12 @@ public sealed class DocumentSearcher
         {
             SetProperty(app, "Visible", false);
             SetProperty(app, "DisplayAlerts", 0);
-            var documents = GetProperty(app, "Documents");
-            var document = Invoke(documents, "Open", path, Missing.Value, true);
+            object? documents = null;
+            object? document = null;
             try
             {
+                documents = GetProperty(app, "Documents");
+                document = Invoke(documents, "Open", path, Missing.Value, true);
                 var content = GetProperty(document, "Content");
                 var text = GetProperty(content, "Text")?.ToString() ?? string.Empty;
                 ReleaseComObject(content);
@@ -777,8 +779,7 @@ public sealed class DocumentSearcher
             }
             finally
             {
-                Invoke(document, "Close", false);
-                ReleaseComObject(document);
+                if (document is not null) { TryInvoke(document, "Close", false); ReleaseComObject(document); }
                 ReleaseComObject(documents);
             }
         });
@@ -790,13 +791,16 @@ public sealed class DocumentSearcher
         {
             SetProperty(app, "Visible", false);
             SetProperty(app, "DisplayAlerts", false);
-            var workbooks = GetProperty(app, "Workbooks");
-            var workbook = Invoke(workbooks, "Open", path, Missing.Value, true);
-            var parts = new List<string>();
-
+            object? workbooks = null;
+            object? workbook = null;
+            object? worksheets = null;
             try
             {
-                var worksheets = GetProperty(workbook, "Worksheets");
+                workbooks = GetProperty(app, "Workbooks");
+                workbook = Invoke(workbooks, "Open", path, Missing.Value, true);
+                var parts = new List<string>();
+
+                worksheets = GetProperty(workbook, "Worksheets");
                 var count = Convert.ToInt32(GetProperty(worksheets, "Count"));
 
                 for (var i = 1; i <= count; i++)
@@ -806,9 +810,16 @@ public sealed class DocumentSearcher
                     {
                         var lines = new List<string> { $"[Sheet] {GetProperty(sheet, "Name")}" };
                         var usedRange = GetProperty(sheet, "UsedRange");
-                        var values = GetProperty(usedRange, "Value");
-                        lines.AddRange(FlattenComMatrix(values));
-                        ReleaseComObject(usedRange);
+                        try
+                        {
+                            var values = GetProperty(usedRange, "Value");
+                            lines.AddRange(FlattenComMatrix(values));
+                            ReleaseComObject(values);
+                        }
+                        finally
+                        {
+                            ReleaseComObject(usedRange);
+                        }
 
                         if (lines.Count > 1)
                         {
@@ -821,13 +832,12 @@ public sealed class DocumentSearcher
                     }
                 }
 
-                ReleaseComObject(worksheets);
                 return new ExtractionResult(NormalizeText(string.Join(Environment.NewLine + Environment.NewLine, parts)), "excel-com");
             }
             finally
             {
-                Invoke(workbook, "Close", false);
-                ReleaseComObject(workbook);
+                ReleaseComObject(worksheets);
+                if (workbook is not null) { TryInvoke(workbook, "Close", false); ReleaseComObject(workbook); }
                 ReleaseComObject(workbooks);
             }
         });
@@ -837,12 +847,14 @@ public sealed class DocumentSearcher
     {
         return RunComExtraction("PowerPoint.Application", app =>
         {
-            var presentations = GetProperty(app, "Presentations");
-            var presentation = Invoke(presentations, "Open", path, false, false, false);
+            object? presentations = null;
+            object? presentation = null;
             var parts = new List<string>();
 
             try
             {
+                presentations = GetProperty(app, "Presentations");
+                presentation = Invoke(presentations, "Open", path, false, false, false);
                 var slides = GetProperty(presentation, "Slides");
                 var slideCount = Convert.ToInt32(GetProperty(slides, "Count"));
 
@@ -917,8 +929,7 @@ public sealed class DocumentSearcher
             }
             finally
             {
-                Invoke(presentation, "Close");
-                ReleaseComObject(presentation);
+                if (presentation is not null) { TryInvoke(presentation, "Close"); ReleaseComObject(presentation); }
                 ReleaseComObject(presentations);
             }
         });
@@ -928,9 +939,9 @@ public sealed class DocumentSearcher
     {
         return RunComExtraction("HWPFrame.HwpObject", app =>
         {
-            Invoke(app, "RegisterModule", "FilePathCheckDLL", "FilePathCheckerModule");
-            Invoke(app, "Open", path);
-            Invoke(app, "InitScan");
+            ReleaseComObject(Invoke(app, "RegisterModule", "FilePathCheckDLL", "FilePathCheckerModule"));
+            ReleaseComObject(Invoke(app, "Open", path));
+            ReleaseComObject(Invoke(app, "InitScan"));
 
             var lines = new List<string>();
             try
@@ -1024,6 +1035,9 @@ public sealed class DocumentSearcher
                 TryInvoke(app, "Quit");
                 ReleaseComObject(app);
             }
+            // COM RCW 잔여 참조 확실히 정리
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
         }
     }
 
