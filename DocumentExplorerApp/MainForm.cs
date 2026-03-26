@@ -59,6 +59,7 @@ public sealed class MainForm : Form
     private TableLayoutPanel _root = null!;
 
     private CancellationTokenSource? _searchCts;
+    private DefocusMessageFilter? _defocusFilter;
     private bool _restartRequested;
     private bool _isSearchBusy;
     private SearchTarget _searchTarget = SearchTarget.FileName;
@@ -91,7 +92,8 @@ public sealed class MainForm : Form
         Program.Log("Layout built");
 
         // 입력칸 외부 클릭 시 포커스 해제 (단축키 입력을 위해)
-        Application.AddMessageFilter(new DefocusMessageFilter(this));
+        _defocusFilter = new DefocusMessageFilter(this);
+        Application.AddMessageFilter(_defocusFilter);
 
         BindInitialState();
         Program.Log("Initial state bound");
@@ -101,6 +103,17 @@ public sealed class MainForm : Form
             ApplyMainSplitRatio();
             Program.Log("MainForm shown");
         };
+
+        void SaveWindowSize()
+        {
+            if (WindowState != FormWindowState.Normal) return;
+            if (IsSimpleMode) { _settings.SimpleWindowWidth = Width; _settings.SimpleWindowHeight = Height; }
+            else              { _settings.DetailedWindowWidth = Width; _settings.DetailedWindowHeight = Height; }
+            _settings.Save();
+        }
+
+        ResizeEnd += (_, _) => SaveWindowSize();
+
     }
 
     protected override void Dispose(bool disposing)
@@ -113,6 +126,8 @@ public sealed class MainForm : Form
             _paneToolTip?.Dispose();
             _searchCts?.Dispose();
             _searchCts = null;
+            if (_defocusFilter is not null)
+                Application.RemoveMessageFilter(_defocusFilter);
         }
         base.Dispose(disposing);
     }
@@ -129,6 +144,8 @@ public sealed class MainForm : Form
     private void BuildSimpleLayout()
     {
         Program.Log("BuildSimpleLayout start");
+        DoubleBuffered = true;
+        MinimumSize = new Size(480, 300); // 생성자의 1100x840 초기값 즉시 교체 + UI 잘림 방지 최솟값
 
         // 타이틀바
         var titleBar = new Panel
@@ -225,49 +242,32 @@ public sealed class MainForm : Form
         var root = _root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 3,
-            RowCount = 3,
-            Padding = new Padding(12, 10, 12, 4),
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(8, 4, 8, 4),
             BackColor = AppBackgroundColor,
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80F));
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180F));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, TopRowHeight));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F)); // row 1: 검색어
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F)); // row 0: 검색어
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // row 1: 결과/미리보기
         Controls.Add(root);      // Fill: 먼저 추가
         Controls.Add(titleBar);  // Top: 나중 추가 → 상단 공간 먼저 차지
         Program.Log("Root created");
 
-        root.Controls.Add(CreateFieldLabel("검색 폴더"), 0, 0);
+        // 심플 모드: 검색 폴더 UI 없음 (진입 전 폴더 설정 검증 완료)
+        // 코드 호환성을 위해 인스턴스만 생성
         _folderTextBox = CreateInputTextBox();
         _folderTextBox.ReadOnly = true;
         _folderTextBox.TabStop = false;
-        root.Controls.Add(CreateInputHost(_folderTextBox), 1, 0);
 
-        var folderButtonPanel = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 1,
-            Margin = new Padding(0),
-            Padding = new Padding(0),
-            BackColor = AppBackgroundColor,
-        };
-        folderButtonPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        folderButtonPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-
-        _browseFolderButton = new Button { Text = "폴더 설정", Anchor = AnchorStyles.Left | AnchorStyles.Right };
+        _browseFolderButton = new Button { Text = "폴더 설정" };
         StyleActionButton(_browseFolderButton);
         _browseFolderButton.Click += async (_, _) => await PickFolderAsync();
-        folderButtonPanel.Controls.Add(_browseFolderButton, 0, 0);
 
         _advancedButton = new Button
         {
             Text = "\uE90F",
-            Anchor = AnchorStyles.Left | AnchorStyles.Right,
-            Font = new Font("Segoe MDL2 Assets", 10F, FontStyle.Regular, GraphicsUnit.Point),
+            Font = new Font("Segoe MDL2 Assets", 8F, FontStyle.Regular, GraphicsUnit.Point),
         };
         StyleAdvancedButton(_advancedButton, false);
         _advancedButton.Width = 30;
@@ -275,6 +275,12 @@ public sealed class MainForm : Form
         _advancedButton.Margin = new Padding(4, 4, 0, 4);
         _advancedButton.Click += (_, _) =>
         {
+            // 모드 전환 전에 현재 모드의 창 크기를 저장 (전환 후에는 IsSimpleMode가 바뀜)
+            if (WindowState == FormWindowState.Normal)
+            {
+                if (IsSimpleMode) { _settings.SimpleWindowWidth = Width; _settings.SimpleWindowHeight = Height; }
+                else { _settings.DetailedWindowWidth = Width; _settings.DetailedWindowHeight = Height; }
+            }
             using var settingsForm = new SettingsForm(_settings);
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -282,8 +288,6 @@ public sealed class MainForm : Form
                 Application.Restart();
             }
         };
-
-        root.Controls.Add(folderButtonPanel, 2, 0);
         Program.Log("Top area created");
 
         var searchTargetPanel = new TableLayoutPanel
@@ -352,8 +356,7 @@ public sealed class MainForm : Form
         _advancedButton.Margin = new Padding(4, TopVerticalMargin, 0, TopVerticalMargin);
         searchTargetPanel.Controls.Add(_advancedButton, 2, 0);
 
-        root.SetColumnSpan(searchTargetPanel, 3);
-        root.Controls.Add(searchTargetPanel, 0, 1);
+        root.Controls.Add(searchTargetPanel, 0, 0);
 
         _statusLabel = new Label
         {
@@ -370,20 +373,17 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             Orientation = Orientation.Vertical,
             BackColor = AppBackgroundColor,
-            Padding = new Padding(0, 4, 0, 0),
+            Padding = new Padding(0),
+            FixedPanel = FixedPanel.None, // 원인7: 자체 비례 조정 허용(ApplyMainSplitRatio가 제어)
         };
-        root.Controls.Add(_mainSplit, 0, 2);
-        root.SetColumnSpan(_mainSplit, 3);
+        root.Controls.Add(_mainSplit, 0, 1);
         _mainSplit.HandleCreated += (_, _) =>
         {
-            _mainSplit.Panel1MinSize = 360;
-            _mainSplit.Panel2MinSize = 360;
+            _mainSplit.Panel1MinSize = 120;
+            _mainSplit.Panel2MinSize = 120;
             ApplyMainSplitRatio();
         };
-        _mainSplit.SizeChanged += (_, _) =>
-        {
-            ApplyMainSplitRatio();
-        };
+        _mainSplit.SizeChanged += (_, _) => ApplyMainSplitRatio();
         Program.Log("Split created");
 
         var leftPanel = BuildPane(out var leftContent);
@@ -443,7 +443,7 @@ public sealed class MainForm : Form
             DataPropertyName = nameof(SearchResult.FileName),
             HeaderText = "파일명",
             AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-            MinimumWidth = 180,
+            MinimumWidth = 60,
         });
         _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
@@ -673,7 +673,9 @@ public sealed class MainForm : Form
 
         Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point);
         FormBorderStyle = FormBorderStyle.Sizable;
-        Size = new Size(1100, 840);
+        var dw = _settings.DetailedWindowWidth;
+        var dh = _settings.DetailedWindowHeight;
+        Size = (dw > 0 && dh > 0) ? new Size(dw, dh) : new Size(1100, 840);
         MinimumSize = new Size(900, 600);
 
         var root = _root = new TableLayoutPanel
@@ -730,6 +732,11 @@ public sealed class MainForm : Form
         _advancedButton.Margin = new Padding(4, 4, 0, 4);
         _advancedButton.Click += (_, _) =>
         {
+            if (WindowState == FormWindowState.Normal)
+            {
+                if (IsSimpleMode) { _settings.SimpleWindowWidth = Width; _settings.SimpleWindowHeight = Height; }
+                else { _settings.DetailedWindowWidth = Width; _settings.DetailedWindowHeight = Height; }
+            }
             using var settingsForm = new SettingsForm(_settings);
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
@@ -1200,19 +1207,19 @@ public sealed class MainForm : Form
 
     private void ApplyMainSplitRatio()
     {
-        if (_mainSplit is null || !_mainSplit.IsHandleCreated)
-        {
-            return;
-        }
+        if (_mainSplit is null || !_mainSplit.IsHandleCreated) return;
 
         var available = Math.Max(_mainSplit.Width, _mainSplit.ClientSize.Width);
-        if (available <= _mainSplit.Panel1MinSize + _mainSplit.Panel2MinSize)
+        var minTotal = _mainSplit.Panel1MinSize + _mainSplit.Panel2MinSize + _mainSplit.SplitterWidth;
+        if (available <= minTotal)
         {
+            // 원인6: 최솟값 미만이어도 Panel1MinSize로 고정해 잘못된 상태 방지
+            try { _mainSplit.SplitterDistance = _mainSplit.Panel1MinSize; } catch { }
             return;
         }
 
         var target = (int)(available * (3d / 9d));
-        var maxLeft = available - _mainSplit.Panel2MinSize - 12;
+        var maxLeft = available - _mainSplit.Panel2MinSize - _mainSplit.SplitterWidth;
         _mainSplit.SplitterDistance = Math.Max(_mainSplit.Panel1MinSize, Math.Min(target, maxLeft));
     }
 
@@ -1220,18 +1227,74 @@ public sealed class MainForm : Form
 
     private int _titleBarHeight = 30;
 
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var cp = base.CreateParams;
+            // FormBorderStyle.None(심플 모드)에서도 리사이즈 가능하게
+            // WS_THICKFRAME: OS가 창 끝 드래그로 리사이즈 처리를 시작함
+            if (FormBorderStyle == FormBorderStyle.None)
+                cp.Style |= 0x00040000;
+            return cp;
+        }
+    }
+
     protected override void WndProc(ref Message m)
     {
+        // WM_WINDOWPOSCHANGING: 창 크기 변경 직전에 최솟값 강제
+        if (m.Msg == 0x0046 && FormBorderStyle == FormBorderStyle.None)
+        {
+            int off = IntPtr.Size * 2; // HWND 2개 건너뜀
+            int flags = System.Runtime.InteropServices.Marshal.ReadInt32(m.LParam, off + 16);
+            if ((flags & 0x0001) == 0) // SWP_NOSIZE가 아닌 경우만
+            {
+                int cx = System.Runtime.InteropServices.Marshal.ReadInt32(m.LParam, off + 8);
+                int cy = System.Runtime.InteropServices.Marshal.ReadInt32(m.LParam, off + 12);
+                if (cx < 480)
+                    System.Runtime.InteropServices.Marshal.WriteInt32(m.LParam, off + 8, 480);
+                if (cy < 300)
+                    System.Runtime.InteropServices.Marshal.WriteInt32(m.LParam, off + 12, 300);
+            }
+        }
+
         base.WndProc(ref m);
+
+        // WM_SIZE 후 즉시 재그리기 (배경 노출 방지)
+        if (m.Msg == 0x0005 && IsSimpleMode) // WM_SIZE
+        {
+            Invalidate(true);
+            return;
+        }
+
         const int WM_NCHITTEST = 0x84;
         const int HTCLIENT = 1;
         const int HTCAPTION = 2;
-        if (m.Msg == WM_NCHITTEST && m.Result == (IntPtr)HTCLIENT)
+        if (m.Msg != WM_NCHITTEST || m.Result != (IntPtr)HTCLIENT) return;
+
+        var pos = PointToClient(Cursor.Position);
+
+        // 심플 모드(Borderless): 가장자리에서 리사이즈 핸들 반환
+        if (IsSimpleMode)
         {
-            var pos = PointToClient(Cursor.Position);
-            if (pos.Y < _titleBarHeight)
-                m.Result = (IntPtr)HTCAPTION;
+            const int edge = 6;
+            bool atL = pos.X < edge;
+            bool atR = pos.X >= ClientSize.Width - edge;
+            bool atT = pos.Y < edge;
+            bool atB = pos.Y >= ClientSize.Height - edge;
+            if (atT && atL) { m.Result = (IntPtr)13; return; } // HTTOPLEFT
+            if (atT && atR) { m.Result = (IntPtr)14; return; } // HTTOPRIGHT
+            if (atB && atL) { m.Result = (IntPtr)16; return; } // HTBOTTOMLEFT
+            if (atB && atR) { m.Result = (IntPtr)17; return; } // HTBOTTOMRIGHT
+            if (atL)        { m.Result = (IntPtr)10; return; } // HTLEFT
+            if (atR)        { m.Result = (IntPtr)11; return; } // HTRIGHT
+            if (atT)        { m.Result = (IntPtr)12; return; } // HTTOP
+            if (atB)        { m.Result = (IntPtr)15; return; } // HTBOTTOM
         }
+
+        // 타이틀바 드래그 (심플 모드 전용 커스텀 타이틀바)
+        if (pos.Y < _titleBarHeight)
+            m.Result = (IntPtr)HTCAPTION;
     }
 
     private void ApplyLayoutMode()
@@ -1240,8 +1303,12 @@ public sealed class MainForm : Form
         _root.SuspendLayout();
         // Simple 모드는 이미 BuildSimpleLayout으로 구성됐으므로
         // 창 크기만 설정
-        MinimumSize = new Size(400, 200);
-        if (Size.Width > 700 || Size.Height > 500)
+        MinimumSize = new Size(480, 300);
+        var sw = _settings.SimpleWindowWidth;
+        var sh = _settings.SimpleWindowHeight;
+        if (sw > 0 && sh > 0)
+            Size = new Size(sw, sh);
+        else if (Size.Width > 700 || Size.Height > 500)
             Size = new Size(550, 400);
         _root.ResumeLayout(true);
     }
@@ -1955,9 +2022,7 @@ public sealed class MainForm : Form
         _previewMetaLabel.Links.Clear();
         _previewMetaLabel.Links.Add(0, _previewMetaLabel.Text.Length, _selectedPreviewResult.DirectoryPath);
         var previewExtension = Path.GetExtension(_selectedPreviewResult.Path);
-        var oldFont = _previewBox.Font;
         _previewBox.Font = GetPreviewFont(previewExtension);
-        oldFont?.Dispose();
         ConfigurePreviewBoxLayout(previewExtension);
         var selectedMatchIndexInPreview = -1;
         var previewBody = preview.Body;
@@ -1995,14 +2060,28 @@ public sealed class MainForm : Form
             : $"검색 위치 {_selectedPreviewMatchIndex + 1} / {preview.Matches.Count} · 줄 {preview.Matches[_selectedPreviewMatchIndex].LineNumber}";
     }
 
+    private static readonly Dictionary<string, Font> _previewFontCache = new();
+
     private static Font GetPreviewFont(string extension)
     {
-        return extension.ToLowerInvariant() switch
+        var key = extension.ToLowerInvariant() switch
         {
-            ".xlsx" or ".xls" or ".csv" or ".tsv" => new Font("GulimChe", 10F, FontStyle.Regular, GraphicsUnit.Point),
-            ".json" or ".xml" or ".yaml" or ".yml" or ".css" or ".js" or ".ts" or ".py" or ".cs" or ".java" or ".sql" => new Font("Consolas", 10F, FontStyle.Regular, GraphicsUnit.Point),
+            ".xlsx" or ".xls" or ".csv" or ".tsv" => "tabular",
+            ".json" or ".xml" or ".yaml" or ".yml" or ".css" or ".js" or ".ts" or ".py" or ".cs" or ".java" or ".sql" => "code",
+            _ => "default",
+        };
+
+        if (_previewFontCache.TryGetValue(key, out var cached))
+            return cached;
+
+        var font = key switch
+        {
+            "tabular" => new Font("GulimChe", 10F, FontStyle.Regular, GraphicsUnit.Point),
+            "code" => new Font("Consolas", 10F, FontStyle.Regular, GraphicsUnit.Point),
             _ => new Font("Malgun Gothic", 10.5F, FontStyle.Regular, GraphicsUnit.Point),
         };
+        _previewFontCache[key] = font;
+        return font;
     }
 
     private void ConfigurePreviewBoxLayout(string extension)
@@ -2037,7 +2116,7 @@ public sealed class MainForm : Form
             {
                 FileName = path,
                 UseShellExecute = true,
-            });
+            })?.Dispose();
         }
     }
 
@@ -2049,7 +2128,7 @@ public sealed class MainForm : Form
             {
                 FileName = path,
                 UseShellExecute = true,
-            });
+            })?.Dispose();
         }
     }
 
@@ -2251,7 +2330,7 @@ public sealed class MainForm : Form
         {
             FileName = result.Path,
             UseShellExecute = true,
-        });
+        })?.Dispose();
     }
 
     private void SaveLastFolder(string folder)
@@ -2267,6 +2346,10 @@ public sealed class AppSettings
     public string LastSearchTarget { get; set; } = "FileName";
     public string LayoutMode { get; set; } = "Detailed";
     public string SearchPatterns { get; set; } = DocumentSearcher.DefaultPatterns;
+    public int DetailedWindowWidth { get; set; } = 0;
+    public int DetailedWindowHeight { get; set; } = 0;
+    public int SimpleWindowWidth { get; set; } = 0;
+    public int SimpleWindowHeight { get; set; } = 0;
 
     public static AppSettings Load()
     {

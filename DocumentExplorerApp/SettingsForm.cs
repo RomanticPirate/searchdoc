@@ -6,6 +6,17 @@ namespace DocumentExplorerApp;
 
 internal sealed class SettingsForm : Form
 {
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (keyData == Keys.Escape)
+        {
+            DialogResult = DialogResult.Cancel;
+            Close();
+            return true;
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
     private static readonly Color BgColor = Color.FromArgb(255, 247, 242);
     private static readonly Color SurfaceColor = Color.FromArgb(255, 252, 248);
     private static readonly Color AccentColor = Color.FromArgb(181, 79, 80);
@@ -41,6 +52,12 @@ internal sealed class SettingsForm : Form
         StartPosition = FormStartPosition.CenterParent;
         BackColor = BgColor;
         Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point);
+        KeyPreview = true;
+        Shown += (_, _) =>
+        {
+            _patternTextBox.SelectionStart = 0;
+            _patternTextBox.SelectionLength = 0;
+        };
 
         var root = new TableLayoutPanel
         {
@@ -103,7 +120,15 @@ internal sealed class SettingsForm : Form
         _layoutToggle.MouseDown += (_, e) =>
         {
             var mid = _layoutToggle.ClientRectangle.Width / 2;
-            _layoutMode = e.X < mid ? "Detailed" : "Simple";
+            var selected = e.X < mid ? "Detailed" : "Simple";
+            if (selected == "Simple" && string.IsNullOrWhiteSpace(_settings.LastFolder))
+            {
+                MessageBox.Show(this,
+                    "기본 모드에서 검색 폴더가 설정되어 있어야 심플 모드를 이용할 수 있습니다.",
+                    "알림");
+                return;
+            }
+            _layoutMode = selected;
             _layoutToggle.Invalidate();
         };
         outer.Controls.Add(_layoutToggle, 0, 1);
@@ -265,7 +290,7 @@ internal sealed class SettingsForm : Form
         {
             if (_layoutMode == "Simple" && string.IsNullOrWhiteSpace(_settings.LastFolder))
             {
-                MessageBox.Show(this, "검색 폴더를 먼저 설정해주세요.", "알림");
+                MessageBox.Show(this, "기본 모드에서 검색 폴더가 설정되어 있어야 심플 모드를 이용할 수 있습니다.", "알림");
                 return;
             }
 
@@ -287,11 +312,9 @@ internal sealed class SettingsForm : Form
         };
         cancelButton.FlatAppearance.BorderSize = 1;
         cancelButton.FlatAppearance.BorderColor = BorderColor;
-        cancelButton.Click += (_, _) =>
-        {
-            DialogResult = DialogResult.Cancel;
-            Close();
-        };
+        cancelButton.DialogResult = DialogResult.Cancel;
+        cancelButton.Click += (_, _) => Close();
+        CancelButton = cancelButton;
 
         panel.Controls.Add(new Panel { BackColor = BgColor }, 0, 0);
         panel.Controls.Add(okButton, 1, 0);

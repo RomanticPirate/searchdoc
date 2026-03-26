@@ -18,3 +18,7 @@ DocumentExplorerApp/obj/
 *.user
 *.log
 startup.log
+DocumentExplorerApp/publish/
+DocumentExplorerApp/publish_out/
+DocumentExplorerApp/publish_single/
+찾아줘문서.exe
