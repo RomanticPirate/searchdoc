@@ -88,6 +88,21 @@ public sealed class MainForm : Form
         _settings = AppSettings.Load();
         Program.Log("Settings loaded");
 
+        if (_settings.GetEffectiveFolders().Count == 0)
+        {
+            using var setupForm = new InitialSetupForm();
+            if (setupForm.ShowDialog() == DialogResult.OK && setupForm.SelectedFolders.Count > 0)
+            {
+                _settings.SearchFolders = setupForm.SelectedFolders;
+                _settings.Save();
+            }
+            else
+            {
+                Environment.Exit(0);
+                return;
+            }
+        }
+
         BuildLayout();
         Program.Log("Layout built");
 
@@ -144,6 +159,7 @@ public sealed class MainForm : Form
     private void BuildSimpleLayout()
     {
         Program.Log("BuildSimpleLayout start");
+        AutoScaleMode = AutoScaleMode.Dpi;
         DoubleBuffered = true;
         MinimumSize = new Size(480, 300); // 생성자의 1100x840 초기값 즉시 교체 + UI 잘림 방지 최솟값
 
@@ -168,20 +184,18 @@ public sealed class MainForm : Form
         titleLeft.MouseDown += (s, e) => { };
         var searchIconLabel = new Label
         {
-            Text = "\uE721",
-            AutoSize = false,
-            Width = 22,
+            Text = "🔍",
+            AutoSize = true,
             Dock = DockStyle.Left,
             TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Segoe MDL2 Assets", 8F, FontStyle.Regular, GraphicsUnit.Point),
+            Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point),
             BackColor = AppBackgroundColor,
             ForeColor = AccentColor,
         };
         var appTitleLabel = new Label
         {
             Text = "찾아줘문서",
-            AutoSize = false,
-            Width = 90,
+            AutoSize = true,
             Dock = DockStyle.Left,
             TextAlign = ContentAlignment.MiddleLeft,
             Font = new Font("Malgun Gothic", 8F, FontStyle.Regular, GraphicsUnit.Point),
@@ -192,7 +206,6 @@ public sealed class MainForm : Form
         var closeBtn = new Button
         {
             Text = "×",
-            Width = 28,
             Dock = DockStyle.Right,
             FlatStyle = FlatStyle.Flat,
             BackColor = AppBackgroundColor,
@@ -203,13 +216,13 @@ public sealed class MainForm : Form
             TabStop = false,
         };
         closeBtn.FlatAppearance.BorderSize = 0;
+        AutoSizeButtonToText(closeBtn, 12, 0);
         closeBtn.Click += (_, _) => Close();
         closeBtn.MouseEnter += (_, _) => closeBtn.BackColor = Color.FromArgb(196, 108, 109);
         closeBtn.MouseLeave += (_, _) => closeBtn.BackColor = AppBackgroundColor;
         var minimizeBtn = new Button
         {
             Text = "−",
-            Width = 28,
             Dock = DockStyle.Right,
             FlatStyle = FlatStyle.Flat,
             BackColor = AppBackgroundColor,
@@ -220,6 +233,7 @@ public sealed class MainForm : Form
             TabStop = false,
         };
         minimizeBtn.FlatAppearance.BorderSize = 0;
+        AutoSizeButtonToText(minimizeBtn, 12, 0);
         minimizeBtn.Click += (_, _) => WindowState = FormWindowState.Minimized;
         minimizeBtn.MouseEnter += (_, _) => minimizeBtn.BackColor = BorderColor;
         minimizeBtn.MouseLeave += (_, _) => minimizeBtn.BackColor = AppBackgroundColor;
@@ -266,13 +280,13 @@ public sealed class MainForm : Form
 
         _advancedButton = new Button
         {
-            Text = "\uE90F",
-            Font = new Font("Segoe MDL2 Assets", 8F, FontStyle.Regular, GraphicsUnit.Point),
+            Text = "⚙",
+            Font = new Font("Malgun Gothic", 8F, FontStyle.Regular, GraphicsUnit.Point),
         };
         StyleAdvancedButton(_advancedButton, false);
-        _advancedButton.Width = 30;
-        _advancedButton.Height = 22;
+        _advancedButton.Padding = new Padding(0);
         _advancedButton.Margin = new Padding(4, 4, 0, 4);
+        AutoSizeButtonToText(_advancedButton, 8, 6);
         _advancedButton.Click += (_, _) =>
         {
             // 모드 전환 전에 현재 모드의 창 크기를 저장 (전환 후에는 IsSimpleMode가 바뀜)
@@ -281,11 +295,19 @@ public sealed class MainForm : Form
                 if (IsSimpleMode) { _settings.SimpleWindowWidth = Width; _settings.SimpleWindowHeight = Height; }
                 else { _settings.DetailedWindowWidth = Width; _settings.DetailedWindowHeight = Height; }
             }
+            var previousFolders = _settings.SearchFolders.ToList();
             using var settingsForm = new SettingsForm(_settings);
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
                 _settings.Save();
-                Application.Restart();
+                var foldersChanged = !previousFolders.SequenceEqual(_settings.SearchFolders, StringComparer.OrdinalIgnoreCase);
+                if (foldersChanged)
+                {
+                    _folderTextBox.Text = string.Join("; ", _settings.SearchFolders);
+                    _ = EnsureIndexReadyAsync(forceRebuild: true);
+                }
+                if (settingsForm.LayoutModeChanged)
+                    Application.Restart();
             }
         };
         Program.Log("Top area created");
@@ -314,7 +336,7 @@ public sealed class MainForm : Form
             BackColor = AppBackgroundColor,
         };
         searchInputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        searchInputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48F));
+        searchInputPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         searchInputPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
 
         _keywordTextBox = CreateInputTextBox();
@@ -326,12 +348,12 @@ public sealed class MainForm : Form
         var keywordInputHost = CreateInputHost(_keywordTextBox);
         keywordInputHost.Dock = DockStyle.Fill;
         searchInputPanel.Controls.Add(keywordInputHost, 0, 0);
-        _searchButton = new Button { Text = "\uE721", Width = 40, Anchor = AnchorStyles.Left };
+        _searchButton = new Button { Text = "🔍", Anchor = AnchorStyles.Left };
         StyleActionButton(_searchButton);
-        _searchButton.Font = new Font("Segoe MDL2 Assets", 10F, FontStyle.Regular, GraphicsUnit.Point);
+        _searchButton.Font = new Font("Malgun Gothic", 11F, FontStyle.Regular, GraphicsUnit.Point);
         _searchButton.Padding = new Padding(0);
-        _searchButton.Height = 26;
         _searchButton.Margin = new Padding(0, 4, 0, 4);
+        AutoSizeButtonToText(_searchButton, 14, 4);
         _searchButton.Click += async (_, _) => { if (_searchButton.Tag is true) await RequestSearchAsync(); };
         _paneToolTip.SetToolTip(_keywordTextBox, "단축키 : Ctrl + F");
         _paneToolTip.SetToolTip(_searchButton, "단축키 : Enter");
@@ -670,6 +692,7 @@ public sealed class MainForm : Form
     private void BuildDetailedLayout()
     {
         Program.Log("BuildDetailedLayout start");
+        AutoScaleMode = AutoScaleMode.Dpi;
 
         Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point);
         FormBorderStyle = FormBorderStyle.Sizable;
@@ -682,54 +705,35 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 3,
-            RowCount = 4,
+            RowCount = 3,
             Padding = new Padding(12, 10, 12, 4),
             BackColor = AppBackgroundColor,
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80F));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160F));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38F)); // row 0: 검색 폴더
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F)); // row 1: 검색어
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // row 2: 결과/미리보기
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F)); // row 3: 상태바
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F)); // row 0: 검색어
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // row 1: 결과/미리보기
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F)); // row 2: 상태바
         Controls.Add(root);
         Program.Log("Detailed root created");
 
-        // row 0: 검색 폴더
-        root.Controls.Add(CreateFieldLabel("검색 폴더"), 0, 0);
+        // 폴더 텍스트박스는 내부 참조용으로만 유지 (UI에 표시하지 않음)
         _folderTextBox = CreateInputTextBox();
         _folderTextBox.ReadOnly = true;
         _folderTextBox.TabStop = false;
-        root.Controls.Add(CreateInputHost(_folderTextBox), 1, 0);
-
-        var folderButtonPanel = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 1,
-            Margin = new Padding(0),
-            Padding = new Padding(0),
-            BackColor = AppBackgroundColor,
-        };
-        folderButtonPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        folderButtonPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 42F));
-        folderButtonPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-
-        _browseFolderButton = new Button { Text = "폴더 설정", Anchor = AnchorStyles.Left | AnchorStyles.Right };
-        StyleActionButton(_browseFolderButton);
+        _browseFolderButton = new Button { Text = "폴더 설정" };
         _browseFolderButton.Click += async (_, _) => await PickFolderAsync();
-        folderButtonPanel.Controls.Add(_browseFolderButton, 0, 0);
 
         _advancedButton = new Button
         {
-            Text = "\uE90F",
+            Text = "⚙",
             Anchor = AnchorStyles.Left | AnchorStyles.Right,
-            Font = new Font("Segoe MDL2 Assets", 10F, FontStyle.Regular, GraphicsUnit.Point),
-            Width = 42,
+            Font = new Font("Malgun Gothic", 11F, FontStyle.Regular, GraphicsUnit.Point),
         };
         StyleAdvancedButton(_advancedButton, false);
         _advancedButton.Margin = new Padding(4, 4, 0, 4);
+        AutoSizeButtonToText(_advancedButton, 14, 6);
         _advancedButton.Click += (_, _) =>
         {
             if (WindowState == FormWindowState.Normal)
@@ -737,24 +741,30 @@ public sealed class MainForm : Form
                 if (IsSimpleMode) { _settings.SimpleWindowWidth = Width; _settings.SimpleWindowHeight = Height; }
                 else { _settings.DetailedWindowWidth = Width; _settings.DetailedWindowHeight = Height; }
             }
+            var previousFolders = _settings.SearchFolders.ToList();
             using var settingsForm = new SettingsForm(_settings);
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
                 _settings.Save();
-                Application.Restart();
+                var foldersChanged = !previousFolders.SequenceEqual(_settings.SearchFolders, StringComparer.OrdinalIgnoreCase);
+                if (foldersChanged)
+                {
+                    _folderTextBox.Text = string.Join("; ", _settings.SearchFolders);
+                    _ = EnsureIndexReadyAsync(forceRebuild: true);
+                }
+                if (settingsForm.LayoutModeChanged)
+                    Application.Restart();
             }
         };
-        folderButtonPanel.Controls.Add(_advancedButton, 1, 0);
-        root.Controls.Add(folderButtonPanel, 2, 0);
         Program.Log("Detailed top area created");
 
-        // row 1: 검색어
-        root.Controls.Add(CreateFieldLabel("검색어"), 0, 1);
+        // row 0: 검색어
+        root.Controls.Add(CreateFieldLabel("검색어"), 0, 0);
 
         var searchTargetPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 3,
+            ColumnCount = 4,
             RowCount = 1,
             Margin = new Padding(0),
             Padding = new Padding(0),
@@ -763,6 +773,7 @@ public sealed class MainForm : Form
         searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150F));
         searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180F));
+        searchTargetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         searchTargetPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
 
         var searchInputPanel = new TableLayoutPanel
@@ -819,12 +830,13 @@ public sealed class MainForm : Form
         };
         // 토글 내부에서 파일명/문서내용 영역별 자체 툴팁 처리
         searchTargetPanel.Controls.Add(_searchTargetToggle, 2, 0);
+        searchTargetPanel.Controls.Add(_advancedButton, 3, 0);
 
         root.SetColumnSpan(searchTargetPanel, 2);
-        root.Controls.Add(searchTargetPanel, 1, 1);
+        root.Controls.Add(searchTargetPanel, 1, 0);
         Program.Log("Detailed search area created");
 
-        // row 2: SplitContainer
+        // row 1: SplitContainer
         _mainSplit = new SplitContainer
         {
             Dock = DockStyle.Fill,
@@ -832,7 +844,7 @@ public sealed class MainForm : Form
             BackColor = AppBackgroundColor,
             Padding = new Padding(0, 4, 0, 0),
         };
-        root.Controls.Add(_mainSplit, 0, 2);
+        root.Controls.Add(_mainSplit, 0, 1);
         root.SetColumnSpan(_mainSplit, 3);
         _mainSplit.HandleCreated += (_, _) =>
         {
@@ -1087,7 +1099,7 @@ public sealed class MainForm : Form
         };
         previewNavGroup.Controls.Add(_previewExpandButton);
 
-        // row 3: 상태바
+        // row 2: 상태바
         var statusBarPanel = new Panel
         {
             Dock = DockStyle.Fill,
@@ -1114,7 +1126,7 @@ public sealed class MainForm : Form
         };
         statusBarPanel.Controls.Add(_statusLabel);
         statusBarPanel.Controls.Add(madeByLabel);
-        root.Controls.Add(statusBarPanel, 0, 3);
+        root.Controls.Add(statusBarPanel, 0, 2);
         root.SetColumnSpan(statusBarPanel, 3);
 
         Program.Log("BuildDetailedLayout done");
@@ -1315,9 +1327,9 @@ public sealed class MainForm : Form
 
     private void BindInitialState()
     {
-        _folderTextBox.Text = string.IsNullOrWhiteSpace(_settings.LastFolder)
-            ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
-            : _settings.LastFolder;
+        _folderTextBox.Text = _settings.SearchFolders.Count > 0
+            ? string.Join("; ", _settings.SearchFolders)
+            : (_settings.LastFolder ?? "");
         _currentIndex = DocumentIndexStore.Load();
         _statusLabel.Text = "대기 중";
         var savedTarget = _settings.LastSearchTarget == "DocumentContent"
@@ -1485,18 +1497,26 @@ public sealed class MainForm : Form
             return;
         }
 
+        var previousFolder = _folderTextBox.Text;
         _folderTextBox.Text = dialog.SelectedPath;
         UpdateSearchButtonVisualState();
-        SaveLastFolder(dialog.SelectedPath);
-        var indexed = await EnsureIndexReadyAsync(forceRebuild: false);
-        if (indexed && _currentIndex is not null)
-        {
-            _statusLabel.Text = $"색인 완료: {_currentIndex.Entries.Count}개 파일";
-        }
 
-        if (!string.IsNullOrWhiteSpace(_keywordTextBox.Text))
+        var indexed = await EnsureIndexReadyAsync(forceRebuild: false);
+        if (indexed)
         {
-            await RequestSearchAsync();
+            // 색인 성공 시에만 폴더 저장
+            SaveLastFolder(dialog.SelectedPath);
+            if (_currentIndex is not null)
+                _statusLabel.Text = $"색인 완료: {_currentIndex.Entries.Count}개 파일";
+
+            if (!string.IsNullOrWhiteSpace(_keywordTextBox.Text))
+                await RequestSearchAsync();
+        }
+        else
+        {
+            // 색인 취소/실패 시 이전 폴더로 복원
+            _folderTextBox.Text = previousFolder;
+            UpdateSearchButtonVisualState();
         }
     }
 
@@ -1508,50 +1528,39 @@ public sealed class MainForm : Form
             .ToArray();
     }
 
-    private bool IsCurrentIndexValid(string rootFolder, IReadOnlyList<string> patterns)
+    private bool IsCurrentIndexValid(IReadOnlyList<string> folders, IReadOnlyList<string> patterns)
     {
-        if (_currentIndex is null)
-        {
-            return false;
-        }
+        if (_currentIndex is null) return false;
+        if (_currentIndex.FormatVersion != DocumentIndexData.CurrentFormatVersion) return false;
 
-        if (_currentIndex.FormatVersion != DocumentIndexData.CurrentFormatVersion)
-        {
-            return false;
-        }
+        var indexFolders = _currentIndex.RootFolders.Count > 0
+            ? _currentIndex.RootFolders
+            : (string.IsNullOrWhiteSpace(_currentIndex.RootFolder) ? [] : new List<string> { _currentIndex.RootFolder });
 
-        if (!string.Equals(_currentIndex.RootFolder, rootFolder, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (_currentIndex.Patterns.Count != patterns.Count)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < patterns.Count; i++)
-        {
-            if (!string.Equals(_currentIndex.Patterns[i], patterns[i], StringComparison.OrdinalIgnoreCase))
-            {
+        if (indexFolders.Count != folders.Count) return false;
+        for (var i = 0; i < folders.Count; i++)
+            if (!string.Equals(indexFolders[i], folders[i], StringComparison.OrdinalIgnoreCase))
                 return false;
-            }
-        }
+
+        if (_currentIndex.Patterns.Count != patterns.Count) return false;
+        for (var i = 0; i < patterns.Count; i++)
+            if (!string.Equals(_currentIndex.Patterns[i], patterns[i], StringComparison.OrdinalIgnoreCase))
+                return false;
 
         return true;
     }
 
     private async Task<bool> EnsureIndexReadyAsync(bool forceRebuild)
     {
-        var rootFolder = _folderTextBox.Text.Trim();
+        var folders = _settings.GetEffectiveFolders();
         var patterns = GetCurrentPatterns();
 
-        if (!Directory.Exists(rootFolder) || patterns.Length == 0)
+        if (folders.Count == 0 || patterns.Length == 0)
         {
             return false;
         }
 
-        if (!forceRebuild && IsCurrentIndexValid(rootFolder, patterns))
+        if (!forceRebuild && IsCurrentIndexValid(folders, patterns))
         {
             return true;
         }
@@ -1562,6 +1571,7 @@ public sealed class MainForm : Form
         using var popup = new IndexingProgressForm();
         using var indexingCts = new CancellationTokenSource();
         var canceled = false;
+        var popupClosed = false;
         popup.CancelRequested += (_, _) =>
         {
             canceled = true;
@@ -1572,34 +1582,21 @@ public sealed class MainForm : Form
         popup.ShowCenteredOver(this);
         popup.UpdateProgress(new IndexingProgress(0, 1, string.Empty, false));
         popup.Refresh();
-        _statusLabel.Text = "문서 색인 준비 중...";
         _statusLabel.Text = "문서 색인 중...";
 
         try
         {
             var progress = new Progress<IndexingProgress>(item =>
             {
-                popup.UpdateProgress(item);
-                if (item.TotalFiles > 0 && item.CurrentFile > 0)
-                {
-                    _statusLabel.Text = $"{item.CurrentFile} / {item.TotalFiles} 색인 중 {Path.GetFileName(item.CurrentPath)}";
-                }
-                else
-                {
-                    _statusLabel.Text = "문서 색인 준비 중...";
-                }
-                if (item.TotalFiles > 0 && item.CurrentFile > 0)
-                {
-                    _statusLabel.Text = $"{item.CurrentFile} / {item.TotalFiles} 색인 중 {Path.GetFileName(item.CurrentPath)}";
-                }
-                else
-                {
-                    _statusLabel.Text = "문서 색인 준비 중...";
-                }
+                if (popupClosed) return;
+                try { popup.UpdateProgress(item); } catch (ObjectDisposedException) { return; }
+                _statusLabel.Text = item.TotalFiles > 0 && item.CurrentFile > 0
+                    ? $"{item.CurrentFile} / {item.TotalFiles} 색인 중 {Path.GetFileName(item.CurrentPath)}"
+                    : "문서 색인 준비 중...";
             });
 
             _currentIndex = await Task.Run(() => _searcher.BuildOrUpdateIndex(
-                rootFolder,
+                folders,
                 patterns,
                 forceRebuild ? null : _currentIndex,
                 progress,
@@ -1611,27 +1608,31 @@ public sealed class MainForm : Form
         }
         catch (OperationCanceledException)
         {
-            _statusLabel.Text = "색인을 취소했어.";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Program.Log($"Indexing error: {ex}");
             return false;
         }
         finally
         {
+            popupClosed = true;
             Enabled = true;
-            popup.Close();
+            try { popup.Close(); } catch { /* 이미 닫힌 경우 무시 */ }
             SetBusyState(false);
-            if (canceled)
-            {
-                _statusLabel.Text = "색인을 취소했어.";
-            }
+            _statusLabel.Text = _currentIndex is not null
+                ? $"색인 완료: {_currentIndex.Entries.Count}개 파일"
+                : "";
         }
     }
 
     private async Task StartSearchCoreAsync()
     {
-        var rootFolder = _folderTextBox.Text.Trim();
-        if (!Directory.Exists(rootFolder))
+        var folders = _settings.GetEffectiveFolders();
+        if (folders.Count == 0)
         {
-            MessageBox.Show(this, "유효한 폴더를 선택해야 해.", "알림");
+            MessageBox.Show(this, "설정에서 검색 폴더를 추가해주세요.", "알림");
             return;
         }
 
@@ -1643,8 +1644,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        SaveLastFolder(rootFolder);
-        var indexed = await EnsureIndexReadyAsync(forceRebuild: !IsCurrentIndexValid(rootFolder, patterns));
+        var indexed = await EnsureIndexReadyAsync(forceRebuild: !IsCurrentIndexValid(folders, patterns));
         if (!indexed)
         {
             return;
@@ -1745,9 +1745,9 @@ public sealed class MainForm : Form
 
     private void ShowSearchBlockedMessage()
     {
-        if (string.IsNullOrWhiteSpace(_folderTextBox.Text))
+        if (_settings.SearchFolders.Count == 0)
         {
-            MessageBox.Show(this, "검색 폴더를 먼저 설정해주세요.", "알림");
+            MessageBox.Show(this, "설정에서 검색 폴더를 추가해주세요.", "알림");
         }
     }
 
@@ -1759,7 +1759,7 @@ public sealed class MainForm : Form
         }
 
         var hasKeyword = !string.IsNullOrWhiteSpace(_keywordTextBox.Text);
-        var hasFolder = !string.IsNullOrWhiteSpace(_folderTextBox.Text);
+        var hasFolder = _settings.SearchFolders.Count > 0;
         var canSearch = !_isSearchBusy && hasKeyword && hasFolder;
         _searchButton.Tag = canSearch;
         _searchButton.Cursor = canSearch ? Cursors.Hand : Cursors.Default;
@@ -2060,6 +2060,14 @@ public sealed class MainForm : Form
             : $"검색 위치 {_selectedPreviewMatchIndex + 1} / {preview.Matches.Count} · 줄 {preview.Matches[_selectedPreviewMatchIndex].LineNumber}";
     }
 
+    /// <summary>버튼 크기를 텍스트에 맞게 자동 계산 (DPI 대응)</summary>
+    private static void AutoSizeButtonToText(Button button, int hPad = 10, int vPad = 4)
+    {
+        var textSize = TextRenderer.MeasureText(button.Text, button.Font);
+        button.Width = textSize.Width + hPad;
+        button.Height = textSize.Height + vPad;
+    }
+
     private static readonly Dictionary<string, Font> _previewFontCache = new();
 
     private static Font GetPreviewFont(string extension)
@@ -2343,6 +2351,7 @@ public sealed class MainForm : Form
 public sealed class AppSettings
 {
     public string LastFolder { get; set; } = string.Empty;
+    public List<string> SearchFolders { get; set; } = new();
     public string LastSearchTarget { get; set; } = "FileName";
     public string LayoutMode { get; set; } = "Detailed";
     public string SearchPatterns { get; set; } = DocumentSearcher.DefaultPatterns;
@@ -2350,6 +2359,16 @@ public sealed class AppSettings
     public int DetailedWindowHeight { get; set; } = 0;
     public int SimpleWindowWidth { get; set; } = 0;
     public int SimpleWindowHeight { get; set; } = 0;
+
+    /// <summary>유효한 검색 폴더 목록 반환 (SearchFolders가 비어있으면 LastFolder로 폴백)</summary>
+    public List<string> GetEffectiveFolders()
+    {
+        if (SearchFolders.Count > 0)
+            return SearchFolders.Where(Directory.Exists).ToList();
+        if (!string.IsNullOrWhiteSpace(LastFolder) && Directory.Exists(LastFolder))
+            return new List<string> { LastFolder };
+        return new List<string>();
+    }
 
     public static AppSettings Load()
     {
@@ -2361,7 +2380,13 @@ public sealed class AppSettings
         try
         {
             var json = File.ReadAllText(AppPaths.SettingsPath);
-            return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            // 기존 LastFolder → SearchFolders 마이그레이션
+            if (settings.SearchFolders.Count == 0 && !string.IsNullOrWhiteSpace(settings.LastFolder))
+            {
+                settings.SearchFolders.Add(settings.LastFolder);
+            }
+            return settings;
         }
         catch
         {
@@ -2371,6 +2396,8 @@ public sealed class AppSettings
 
     public void Save()
     {
+        // SearchFolders와 LastFolder 동기화
+        LastFolder = SearchFolders.Count > 0 ? SearchFolders[0] : string.Empty;
         AppPaths.EnsureAppDataDirectory();
         var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(AppPaths.SettingsPath, json);

@@ -27,25 +27,33 @@ internal sealed class SettingsForm : Form
     private static readonly Color ToggleBorderColor = Color.FromArgb(210, 168, 170);
 
     private readonly AppSettings _settings;
+    private readonly string _originalLayoutMode;
 
-    // 레이아웃 토글 (자식 버튼 없이 단일 Paint로 그림 → 테두리 덮힘 없음)
+    // 레이아웃 토글
     private Panel _layoutToggle = null!;
     private string _layoutMode;
 
+    // 검색 폴더
+    private ListBox _folderListBox = null!;
+
     // 검색 확장자
     private TextBox _patternTextBox = null!;
+
+    /// <summary>모드가 변경되었는지 여부 (OK 후 확인)</summary>
+    public bool LayoutModeChanged { get; private set; }
 
     public SettingsForm(AppSettings settings)
     {
         _settings = settings;
         _layoutMode = settings.LayoutMode;
+        _originalLayoutMode = settings.LayoutMode;
         BuildLayout();
     }
 
     private void BuildLayout()
     {
         Text = "\U0001F527 설정";
-        ClientSize = new Size(440, 290);
+        ClientSize = new Size(480, 420);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -63,22 +71,24 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 5,
+            RowCount = 7,
             Padding = new Padding(20, 20, 20, 12),
             BackColor = BgColor,
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 66F));  // 모드 선택
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));  // 간격
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 12F));  // 간격
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));  // 검색 폴더
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 12F));  // 간격
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 100F)); // 검색 확장자
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));  // 여백(최소)
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 8F));   // 여백
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38F));  // 버튼
         Controls.Add(root);
 
         root.Controls.Add(BuildLayoutSection(), 0, 0);
-        // row 1 = 간격 (빈 공간)
-        root.Controls.Add(BuildPatternSection(), 0, 2);
-        root.Controls.Add(BuildFooter(), 0, 4);
+        root.Controls.Add(BuildFolderSection(), 0, 2);
+        root.Controls.Add(BuildPatternSection(), 0, 4);
+        root.Controls.Add(BuildFooter(), 0, 6);
     }
 
     private Control BuildLayoutSection()
@@ -121,10 +131,10 @@ internal sealed class SettingsForm : Form
         {
             var mid = _layoutToggle.ClientRectangle.Width / 2;
             var selected = e.X < mid ? "Detailed" : "Simple";
-            if (selected == "Simple" && string.IsNullOrWhiteSpace(_settings.LastFolder))
+            if (selected == "Simple" && (_folderListBox is null || _folderListBox.Items.Count == 0))
             {
                 MessageBox.Show(this,
-                    "기본 모드에서 검색 폴더가 설정되어 있어야 심플 모드를 이용할 수 있습니다.",
+                    "심플 모드를 사용하려면 검색 폴더를 먼저 설정해주세요.",
                     "알림");
                 return;
             }
@@ -184,6 +194,128 @@ internal sealed class SettingsForm : Form
         var flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding;
         TextRenderer.DrawText(g, "기본 모드", font, new Rectangle(1, 1, mid - 1, r.Height - 2), leftColor, flags);
         TextRenderer.DrawText(g, "심플 모드", font, new Rectangle(mid + 1, 1, r.Width - mid - 2, r.Height - 2), rightColor, flags);
+    }
+
+    private Control BuildFolderSection()
+    {
+        var outer = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = BgColor,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+            ColumnCount = 1,
+            RowCount = 2,
+        };
+        outer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
+        outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+        var label = new Label
+        {
+            Text = "검색 폴더",
+            Font = new Font("Malgun Gothic", 9F, FontStyle.Bold, GraphicsUnit.Point),
+            ForeColor = TextColor,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(0),
+        };
+        outer.Controls.Add(label, 0, 0);
+
+        var inputRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = BgColor,
+        };
+        inputRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        inputRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 68F));
+        inputRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+        _folderListBox = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = SurfaceColor,
+            ForeColor = TextColor,
+            Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point),
+            Margin = new Padding(0, 0, 8, 0),
+            SelectionMode = SelectionMode.One,
+        };
+        foreach (var folder in _settings.SearchFolders)
+            _folderListBox.Items.Add(folder);
+
+        var buttonPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+            ColumnCount = 1,
+            RowCount = 3,
+            BackColor = BgColor,
+        };
+        buttonPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        buttonPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+        buttonPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+        buttonPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+        var addButton = new Button
+        {
+            Text = "추가",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 0, 4),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = AccentColor,
+            ForeColor = Color.White,
+            UseVisualStyleBackColor = false,
+        };
+        addButton.FlatAppearance.BorderSize = 0;
+        addButton.Click += (_, _) =>
+        {
+            using var dialog = new FolderBrowserDialog
+            {
+                InitialDirectory = _folderListBox.Items.Count > 0 && Directory.Exists((string)_folderListBox.Items[^1])
+                    ? (string)_folderListBox.Items[^1]
+                    : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                ShowNewFolderButton = false,
+            };
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+            // 중복 체크
+            foreach (string item in _folderListBox.Items)
+                if (string.Equals(item, dialog.SelectedPath, StringComparison.OrdinalIgnoreCase))
+                    return;
+            _folderListBox.Items.Add(dialog.SelectedPath);
+        };
+
+        var removeButton = new Button
+        {
+            Text = "삭제",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = SurfaceColor,
+            ForeColor = TextColor,
+            UseVisualStyleBackColor = false,
+        };
+        removeButton.FlatAppearance.BorderSize = 1;
+        removeButton.FlatAppearance.BorderColor = BorderColor;
+        removeButton.Click += (_, _) =>
+        {
+            if (_folderListBox.SelectedIndex >= 0)
+                _folderListBox.Items.RemoveAt(_folderListBox.SelectedIndex);
+        };
+
+        buttonPanel.Controls.Add(addButton, 0, 0);
+        buttonPanel.Controls.Add(removeButton, 0, 1);
+
+        inputRow.Controls.Add(_folderListBox, 0, 0);
+        inputRow.Controls.Add(buttonPanel, 1, 0);
+        outer.Controls.Add(inputRow, 0, 1);
+
+        return outer;
     }
 
     private Control BuildPatternSection()
@@ -288,14 +420,17 @@ internal sealed class SettingsForm : Form
         okButton.FlatAppearance.BorderSize = 0;
         okButton.Click += (_, _) =>
         {
-            if (_layoutMode == "Simple" && string.IsNullOrWhiteSpace(_settings.LastFolder))
+            var folders = _folderListBox.Items.Cast<string>().ToList();
+            if (_layoutMode == "Simple" && folders.Count == 0)
             {
-                MessageBox.Show(this, "기본 모드에서 검색 폴더가 설정되어 있어야 심플 모드를 이용할 수 있습니다.", "알림");
+                MessageBox.Show(this, "심플 모드를 사용하려면 검색 폴더를 먼저 설정해주세요.", "알림");
                 return;
             }
 
+            _settings.SearchFolders = folders;
             _settings.LayoutMode = _layoutMode;
             _settings.SearchPatterns = _patternTextBox.Text;
+            LayoutModeChanged = _layoutMode != _originalLayoutMode;
             DialogResult = DialogResult.OK;
             Close();
         };

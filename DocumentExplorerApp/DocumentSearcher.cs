@@ -13,6 +13,15 @@ public sealed class DocumentSearcher
         "docx, doc, xlsx, xls, pptx, ppt, hwpx, hwp, txt, md, csv, tsv, json, xml, log, ini, cfg, yaml, yml, html, htm, css, js, ts, py, cs, java, sql";
     private const int MaxPreviewChars = 800;
 
+    // COM 앱 재사용을 위한 ProgID 매핑 (파일마다 앱 새로 만들지 않음)
+    private static readonly Dictionary<string, string> ComProgIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".doc"] = "Word.Application",
+        [".xls"] = "Excel.Application",
+        [".ppt"] = "PowerPoint.Application",
+        [".hwp"] = "HWPFrame.HwpObject",
+    };
+
     private readonly Dictionary<string, Func<string, ExtractionResult>> _extractors;
 
     public DocumentSearcher()
@@ -56,7 +65,7 @@ public sealed class DocumentSearcher
         IProgress<IndexingProgress> progress,
         CancellationToken cancellationToken)
     {
-        var files = FindFiles(rootFolder, patterns);
+        var files = FindFiles(rootFolder, patterns, cancellationToken);
         var entries = new List<DocumentIndexEntry>(files.Count);
         progress.Report(new IndexingProgress(0, files.Count, string.Empty, false));
 
@@ -112,16 +121,29 @@ public sealed class DocumentSearcher
     }
 
     public DocumentIndexData BuildOrUpdateIndex(
-        string rootFolder,
+        IReadOnlyList<string> rootFolders,
         IReadOnlyList<string> patterns,
         DocumentIndexData? existingIndex,
         IProgress<IndexingProgress> progress,
         CancellationToken cancellationToken)
     {
-        var files = FindFiles(rootFolder, patterns);
+        var files = new List<string>();
+        foreach (var folder in rootFolders)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Directory.Exists(folder))
+                files.AddRange(FindFiles(folder, patterns, cancellationToken));
+        }
+
         var existingEntries = existingIndex?.Entries.ToDictionary(item => item.Path, StringComparer.OrdinalIgnoreCase)
             ?? new Dictionary<string, DocumentIndexEntry>(StringComparer.OrdinalIgnoreCase);
-        var entries = new List<DocumentIndexEntry>(files.Count);
+
+        // 결과 배열 (인덱스 위치 유지)
+        var entries = new DocumentIndexEntry?[files.Count];
+
+        // 변경된 파일만 추출 대상, COM 필요 파일은 별도 분류
+        var nonComPending = new List<(int Index, string Path, FileInfo Info)>();
+        var comPending = new Dictionary<string, List<(int Index, string Path, FileInfo Info)>>(StringComparer.OrdinalIgnoreCase);
 
         progress.Report(new IndexingProgress(0, files.Count, string.Empty, false));
 
@@ -135,25 +157,374 @@ public sealed class DocumentSearcher
                 existingEntry.LastWriteUtcTicks == fileInfo.LastWriteTimeUtc.Ticks &&
                 existingEntry.FileLength == fileInfo.Length)
             {
-                entries.Add(existingEntry);
+                entries[i] = existingEntry;
+                progress.Report(new IndexingProgress(i + 1, files.Count, path, false));
+                continue;
+            }
+
+            var ext = Path.GetExtension(path);
+            if (ComProgIds.TryGetValue(ext, out var progId))
+            {
+                if (!comPending.TryGetValue(progId, out var list))
+                {
+                    list = [];
+                    comPending[progId] = list;
+                }
+                list.Add((i, path, fileInfo));
             }
             else
             {
-                entries.Add(BuildIndexEntry(path, fileInfo));
+                nonComPending.Add((i, path, fileInfo));
             }
+        }
 
-            progress.Report(new IndexingProgress(i + 1, files.Count, path, false));
+        // 비-COM 파일 먼저 처리 (ZIP 기반 docx/xlsx/pptx, 텍스트 등)
+        var processed = entries.Count(static e => e is not null);
+        foreach (var (idx, path, info) in nonComPending)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            entries[idx] = BuildIndexEntry(path, info, cancellationToken);
+            processed++;
+            progress.Report(new IndexingProgress(processed, files.Count, path, false));
+        }
+
+        // COM 파일: ProgID별로 앱 한 번만 열어서 배치 처리
+        foreach (var (progId, fileList) in comPending)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ProcessComBatch(progId, fileList, entries, files.Count, ref processed, progress, cancellationToken);
         }
 
         progress.Report(new IndexingProgress(files.Count, files.Count, string.Empty, true));
 
+        var cleanedPatterns = patterns.Select(static item => item.Trim()).Where(static item => !string.IsNullOrWhiteSpace(item)).ToList();
         return new DocumentIndexData
         {
             FormatVersion = DocumentIndexData.CurrentFormatVersion,
-            RootFolder = rootFolder,
-            Patterns = patterns.Select(static item => item.Trim()).Where(static item => !string.IsNullOrWhiteSpace(item)).ToList(),
+            RootFolder = rootFolders.Count > 0 ? rootFolders[0] : string.Empty,
+            RootFolders = rootFolders.ToList(),
+            Patterns = cleanedPatterns,
             IndexedAtUtc = DateTimeOffset.UtcNow,
-            Entries = entries,
+            Entries = entries.Select(static e => e!).ToList(),
+        };
+    }
+
+    /// <summary>COM 앱 하나로 같은 타입 파일들을 배치 처리 (메모리 절약)</summary>
+    private void ProcessComBatch(
+        string progId,
+        List<(int Index, string Path, FileInfo Info)> fileList,
+        DocumentIndexEntry?[] entries,
+        int totalFiles,
+        ref int processed,
+        IProgress<IndexingProgress> progress,
+        CancellationToken cancellationToken)
+    {
+        object? app = null;
+        var filesProcessedInBatch = 0;
+        try
+        {
+            var type = Type.GetTypeFromProgID(progId);
+            if (type is not null)
+                app = Activator.CreateInstance(type);
+
+            if (app is not null)
+            {
+                // 앱 초기 설정
+                InitializeComApp(progId, app);
+            }
+
+            foreach (var (idx, path, info) in fileList)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (app is null)
+                {
+                    entries[idx] = MakeFailureEntry(path, info, $"{progId}를 찾지 못했어.");
+                }
+                else
+                {
+                    try
+                    {
+                        var result = ExtractWithComApp(progId, app, path);
+                        entries[idx] = new DocumentIndexEntry
+                        {
+                            Path = path,
+                            LastWriteUtcTicks = info.Exists ? info.LastWriteTimeUtc.Ticks : 0,
+                            FileLength = info.Exists ? info.Length : 0,
+                            Status = "성공",
+                            Content = result.Text,
+                        };
+                    }
+                    catch (Exception ex)
+                    {
+                        entries[idx] = MakeFailureEntry(path, info, CreateFailureMessage(path, ex));
+                    }
+                }
+
+                filesProcessedInBatch++;
+                processed++;
+                progress.Report(new IndexingProgress(processed, totalFiles, path, false));
+
+                // COM 앱이 50파일마다 메모리 누적되면 재시작
+                if (app is not null && filesProcessedInBatch % 50 == 0)
+                {
+                    ShutdownComApp(progId, app);
+                    ReleaseComObject(app);
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    app = Activator.CreateInstance(type!);
+                    if (app is not null) InitializeComApp(progId, app);
+                }
+            }
+        }
+        finally
+        {
+            if (app is not null)
+            {
+                ShutdownComApp(progId, app);
+                ReleaseComObject(app);
+            }
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+    }
+
+    private static void InitializeComApp(string progId, object app)
+    {
+        if (progId == "Word.Application")
+        {
+            SetProperty(app, "Visible", false);
+            SetProperty(app, "DisplayAlerts", 0);
+        }
+        else if (progId == "Excel.Application")
+        {
+            SetProperty(app, "Visible", false);
+            SetProperty(app, "DisplayAlerts", false);
+        }
+        else if (progId == "HWPFrame.HwpObject")
+        {
+            TryInvoke(app, "RegisterModule", "FilePathCheckDLL", "FilePathCheckerModule");
+        }
+        // PowerPoint.Application은 별도 초기화 불필요
+    }
+
+    private static void ShutdownComApp(string progId, object app)
+    {
+        if (progId == "HWPFrame.HwpObject")
+        {
+            TryInvoke(app, "Quit");
+        }
+        else
+        {
+            TryInvoke(app, "Quit");
+        }
+    }
+
+    private static ExtractionResult ExtractWithComApp(string progId, object app, string path)
+    {
+        if (progId == "Word.Application") return ExtractWordDocument(app, path);
+        if (progId == "Excel.Application") return ExtractExcelWorkbook(app, path);
+        if (progId == "PowerPoint.Application") return ExtractPowerPointPresentation(app, path);
+        if (progId == "HWPFrame.HwpObject") return ExtractHwpDocument(app, path);
+        throw new InvalidOperationException($"알 수 없는 COM ProgID: {progId}");
+    }
+
+    private static ExtractionResult ExtractWordDocument(object app, string path)
+    {
+        object? documents = null;
+        object? document = null;
+        try
+        {
+            documents = GetProperty(app, "Documents");
+            document = Invoke(documents, "Open", path, Missing.Value, true);
+            var content = GetProperty(document, "Content");
+            var text = GetProperty(content, "Text")?.ToString() ?? string.Empty;
+            ReleaseComObject(content);
+            return new ExtractionResult(NormalizeText(text), "word-com");
+        }
+        finally
+        {
+            if (document is not null) { TryInvoke(document, "Close", false); ReleaseComObject(document); }
+            ReleaseComObject(documents);
+        }
+    }
+
+    private static ExtractionResult ExtractExcelWorkbook(object app, string path)
+    {
+        object? workbooks = null;
+        object? workbook = null;
+        object? worksheets = null;
+        try
+        {
+            workbooks = GetProperty(app, "Workbooks");
+            workbook = Invoke(workbooks, "Open", path, Missing.Value, true);
+            var parts = new List<string>();
+
+            worksheets = GetProperty(workbook, "Worksheets");
+            var count = Convert.ToInt32(GetProperty(worksheets, "Count"));
+
+            for (var i = 1; i <= count; i++)
+            {
+                var sheet = GetProperty(worksheets, "Item", i);
+                try
+                {
+                    var lines = new List<string> { $"[Sheet] {GetProperty(sheet, "Name")}" };
+                    var usedRange = GetProperty(sheet, "UsedRange");
+                    try
+                    {
+                        var values = GetProperty(usedRange, "Value");
+                        lines.AddRange(FlattenComMatrix(values));
+                        ReleaseComObject(values);
+                    }
+                    finally
+                    {
+                        ReleaseComObject(usedRange);
+                    }
+
+                    if (lines.Count > 1)
+                    {
+                        parts.Add(string.Join(Environment.NewLine, lines));
+                    }
+                }
+                finally
+                {
+                    ReleaseComObject(sheet);
+                }
+            }
+
+            return new ExtractionResult(NormalizeText(string.Join(Environment.NewLine + Environment.NewLine, parts)), "excel-com");
+        }
+        finally
+        {
+            ReleaseComObject(worksheets);
+            if (workbook is not null) { TryInvoke(workbook, "Close", false); ReleaseComObject(workbook); }
+            ReleaseComObject(workbooks);
+        }
+    }
+
+    private static ExtractionResult ExtractPowerPointPresentation(object app, string path)
+    {
+        object? presentations = null;
+        object? presentation = null;
+        var parts = new List<string>();
+
+        try
+        {
+            presentations = GetProperty(app, "Presentations");
+            presentation = Invoke(presentations, "Open", path, false, false, false);
+            var slides = GetProperty(presentation, "Slides");
+            var slideCount = Convert.ToInt32(GetProperty(slides, "Count"));
+
+            for (var i = 1; i <= slideCount; i++)
+            {
+                var slide = GetProperty(slides, "Item", i);
+                try
+                {
+                    var lines = new List<string> { $"[Slide {GetProperty(slide, "SlideIndex")}]" };
+                    var shapes = GetProperty(slide, "Shapes");
+                    var shapeCount = Convert.ToInt32(GetProperty(shapes, "Count"));
+
+                    for (var j = 1; j <= shapeCount; j++)
+                    {
+                        var shape = GetProperty(shapes, "Item", j);
+                        try
+                        {
+                            var hasTextFrame = Convert.ToBoolean(GetProperty(shape, "HasTextFrame"));
+                            if (!hasTextFrame) continue;
+
+                            var textFrame = GetProperty(shape, "TextFrame");
+                            try
+                            {
+                                var hasText = Convert.ToBoolean(GetProperty(textFrame, "HasText"));
+                                if (!hasText) continue;
+
+                                var textRange = GetProperty(textFrame, "TextRange");
+                                try
+                                {
+                                    var text = GetProperty(textRange, "Text")?.ToString();
+                                    if (!string.IsNullOrWhiteSpace(text))
+                                        lines.Add(text.Trim());
+                                }
+                                finally
+                                {
+                                    ReleaseComObject(textRange);
+                                }
+                            }
+                            finally
+                            {
+                                ReleaseComObject(textFrame);
+                            }
+                        }
+                        finally
+                        {
+                            ReleaseComObject(shape);
+                        }
+                    }
+
+                    ReleaseComObject(shapes);
+                    if (lines.Count > 1)
+                        parts.Add(string.Join(Environment.NewLine, lines));
+                }
+                finally
+                {
+                    ReleaseComObject(slide);
+                }
+            }
+
+            ReleaseComObject(slides);
+            return new ExtractionResult(NormalizeText(string.Join(Environment.NewLine + Environment.NewLine, parts)), "powerpoint-com");
+        }
+        finally
+        {
+            if (presentation is not null) { TryInvoke(presentation, "Close"); ReleaseComObject(presentation); }
+            ReleaseComObject(presentations);
+        }
+    }
+
+    private static ExtractionResult ExtractHwpDocument(object app, string path)
+    {
+        ReleaseComObject(Invoke(app, "Open", path));
+        ReleaseComObject(Invoke(app, "InitScan"));
+
+        var lines = new List<string>();
+        try
+        {
+            while (true)
+            {
+                var result = Invoke(app, "GetText");
+                try
+                {
+                    var state = Convert.ToInt32(GetProperty(result, "Item", 0));
+                    var text = GetProperty(result, "Item", 1)?.ToString();
+                    if (!string.IsNullOrWhiteSpace(text))
+                        lines.Add(text.Trim());
+
+                    if (state is 0 or 1) break;
+                }
+                finally
+                {
+                    ReleaseComObject(result);
+                }
+            }
+
+            return new ExtractionResult(NormalizeText(string.Join(Environment.NewLine, lines)), "hwp-com");
+        }
+        finally
+        {
+            TryInvoke(app, "ReleaseScan");
+            TryInvoke(app, "Clear", 3);
+        }
+    }
+
+    private static DocumentIndexEntry MakeFailureEntry(string path, FileInfo info, string message)
+    {
+        return new DocumentIndexEntry
+        {
+            Path = path,
+            LastWriteUtcTicks = info.Exists ? info.LastWriteTimeUtc.Ticks : 0,
+            FileLength = info.Exists ? info.Length : 0,
+            Status = "실패",
+            Content = message,
         };
     }
 
@@ -221,7 +592,7 @@ public sealed class DocumentSearcher
         IProgress<SearchProgress> progress,
         CancellationToken cancellationToken)
     {
-        var files = FindFiles(rootFolder, patterns);
+        var files = FindFiles(rootFolder, patterns, cancellationToken);
         progress.Report(new SearchProgress(0, files.Count, string.Empty, null, false));
 
         var trimmedKeyword = keyword.Trim();
@@ -303,7 +674,7 @@ public sealed class DocumentSearcher
             return "본문 추출에 실패했습니다.\n파일이 잠겨 있거나 손상되었을 수 있습니다.";
     }
 
-    private DocumentIndexEntry BuildIndexEntry(string path, FileInfo fileInfo)
+    private DocumentIndexEntry BuildIndexEntry(string path, FileInfo fileInfo, CancellationToken cancellationToken = default)
     {
         var extension = Path.GetExtension(path);
         var status = "성공";
@@ -311,6 +682,7 @@ public sealed class DocumentSearcher
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (_extractors.TryGetValue(extension, out var extractor))
             {
                 content = extractor(path).Text;
@@ -337,7 +709,7 @@ public sealed class DocumentSearcher
         };
     }
 
-    private static List<string> FindFiles(string rootFolder, IReadOnlyList<string> patterns)
+    private static List<string> FindFiles(string rootFolder, IReadOnlyList<string> patterns, CancellationToken cancellationToken = default)
     {
         var loweredPatterns = patterns
             .Select(NormalizePatternToken)
@@ -349,6 +721,7 @@ public sealed class DocumentSearcher
 
         while (pending.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var current = pending.Pop();
 
             try
@@ -366,6 +739,7 @@ public sealed class DocumentSearcher
 
                 foreach (var file in Directory.EnumerateFiles(current))
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     var name = Path.GetFileName(file).ToLowerInvariant();
                     if (name.StartsWith("~$", StringComparison.Ordinal))
                     {

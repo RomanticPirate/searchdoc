@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>찾아줘문서</AssemblyName>
     <RootNamespace>SearchDoc</RootNamespace>
-    <Version>1.0.0</Version>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>2.0.0</Version>
+    <FileVersion>2.0.0.0</FileVersion>
     <Product>찾아줘문서</Product>
     <AssemblyTitle>파일 찾다가 답답해서 내가 만든 프로그램</AssemblyTitle>
     <FileDescription>파일 찾다가 답답해서 내가 만든 프로그램</FileDescription>

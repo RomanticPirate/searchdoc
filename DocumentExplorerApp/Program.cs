@@ -23,7 +23,9 @@ internal static class Program
                 Log($"UnhandledException: {args.ExceptionObject}");
             };
 
-            ApplicationConfiguration.Initialize();
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
             Log("ApplicationConfiguration initialized");
 
             using var form = new MainForm();

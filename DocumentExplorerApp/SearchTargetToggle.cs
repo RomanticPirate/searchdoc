@@ -45,17 +45,53 @@ internal sealed class SearchTargetToggle : Control
     {
         DoubleBuffered = true;
         ResizeRedraw = true;
-        Size = new Size(66, 22);
-        MinimumSize = new Size(66, 22);
         Cursor = Cursors.Hand;
         Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point);
-        UpdateLayoutRects();
+        RecalcAutoSize();
     }
 
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
         UpdateLayoutRects();
+    }
+
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+        RecalcAutoSize();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        RecalcAutoSize();
+    }
+
+    /// <summary>텍스트/이모지를 측정해서 컨트롤 크기를 자동 결정 (DPI 대응)</summary>
+    private void RecalcAutoSize()
+    {
+        using var g = CreateGraphics();
+        var font = UseIconMode
+            ? new Font("Malgun Gothic", 10F, FontStyle.Regular, GraphicsUnit.Point)
+            : Font;
+
+        var leftText = UseIconMode ? "📄" : "파일명";
+        var rightText = UseIconMode ? "🔍" : "문서 내용";
+
+        var leftSize = TextRenderer.MeasureText(g, leftText, font);
+        var rightSize = TextRenderer.MeasureText(g, rightText, font);
+
+        var cellWidth = Math.Max(leftSize.Width, rightSize.Width) + 8; // 좌우 패딩
+        var h = Math.Max(leftSize.Height, rightSize.Height) + 6;      // 상하 패딩
+
+        var w = cellWidth * 2 + 2; // 2셀 + 보더
+        Size = new Size(w, h);
+        MinimumSize = new Size(w, h);
+
+        if (!UseIconMode) font.Dispose();
+        UpdateLayoutRects();
+        Invalidate();
     }
 
     protected override void Dispose(bool disposing)
@@ -140,9 +176,9 @@ internal sealed class SearchTargetToggle : Control
 
         if (UseIconMode)
         {
-            using var iconFont = new Font("Segoe MDL2 Assets", 10F, FontStyle.Regular, GraphicsUnit.Point);
-            DrawLabel(e.Graphics, _fileNameRect, "\uE8A5", _selectedTarget == SearchTarget.FileName, iconFont);
-            DrawLabel(e.Graphics, _contentRect, "\uE721", _selectedTarget == SearchTarget.DocumentContent, iconFont);
+            using var iconFont = new Font("Malgun Gothic", 10F, FontStyle.Regular, GraphicsUnit.Point);
+            DrawLabel(e.Graphics, _fileNameRect, "📄", _selectedTarget == SearchTarget.FileName, iconFont);
+            DrawLabel(e.Graphics, _contentRect, "🔍", _selectedTarget == SearchTarget.DocumentContent, iconFont);
         }
         else
         {

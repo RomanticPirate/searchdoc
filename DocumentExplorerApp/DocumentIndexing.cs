@@ -10,6 +10,8 @@ public sealed class DocumentIndexData
 
     public string RootFolder { get; set; } = string.Empty;
 
+    public List<string> RootFolders { get; set; } = [];
+
     public List<string> Patterns { get; set; } = [];
 
     public DateTimeOffset IndexedAtUtc { get; set; }
@@ -87,15 +89,15 @@ public sealed class IndexingProgressForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         TopMost = true;
-        ClientSize = new Size(560, 240);
+        ClientSize = new Size(480, 180);
         BackColor = Color.FromArgb(255, 252, 248);
         Font = new Font("Malgun Gothic", 9F, FontStyle.Regular, GraphicsUnit.Point);
 
         _titleLabel = new Label
         {
             Dock = DockStyle.Top,
-            Height = 38,
-            Padding = new Padding(18, 12, 18, 0),
+            Height = 32,
+            Padding = new Padding(16, 10, 16, 0),
             Text = "색인 작업 중",
             Font = new Font("Malgun Gothic", 10.5F, FontStyle.Bold, GraphicsUnit.Point),
         };
@@ -103,8 +105,8 @@ public sealed class IndexingProgressForm : Form
         _descriptionLabel = new Label
         {
             Dock = DockStyle.Top,
-            Height = 100,
-            Padding = new Padding(18, 6, 18, 0),
+            Height = 58,
+            Padding = new Padding(16, 4, 16, 0),
             Text = "- 빠른 검색을 위해서 색인 작업이 진행됩니다.\r\n- 최초 검색 폴더를 지정할 때 '1회'만 진행됩니다.\r\n- 이후 변경되는 파일에 대해서만 추가 색인 작업이 진행됩니다.",
             ForeColor = Color.FromArgb(110, 96, 104),
         };
@@ -112,8 +114,8 @@ public sealed class IndexingProgressForm : Form
         _detailLabel = new Label
         {
             Dock = DockStyle.Top,
-            Height = 44,
-            Padding = new Padding(18, 8, 18, 0),
+            Height = 28,
+            Padding = new Padding(16, 4, 16, 0),
             Text = string.Empty,
             ForeColor = Color.FromArgb(110, 96, 104),
             AutoEllipsis = true,
@@ -121,29 +123,30 @@ public sealed class IndexingProgressForm : Form
 
         _countLabel = new Label
         {
-            Dock = DockStyle.Top,
-            Height = 24,
-            Padding = new Padding(18, 0, 18, 0),
+            Dock = DockStyle.Fill,
+            Padding = new Padding(0),
+            Margin = new Padding(0, 0, 8, 0),
             Text = "0 / 0",
-            Font = new Font("Malgun Gothic", 9.5F, FontStyle.Bold, GraphicsUnit.Point),
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Malgun Gothic", 9F, FontStyle.Bold, GraphicsUnit.Point),
         };
 
         _progressBar = new ProgressBar
         {
             Dock = DockStyle.Fill,
+            Margin = new Padding(0),
             Style = ProgressBarStyle.Continuous,
         };
 
         _cancelButton = new Button
         {
             Text = "취소",
-            Width = 84,
-            Height = 30,
-            Anchor = AnchorStyles.Right | AnchorStyles.Top,
+            Width = 80,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(8, 0, 0, 0),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(181, 79, 80),
             ForeColor = Color.White,
-            Margin = new Padding(0),
         };
         _cancelButton.FlatAppearance.BorderSize = 0;
         _cancelButton.Click += (_, _) =>
@@ -156,16 +159,16 @@ public sealed class IndexingProgressForm : Form
         var footer = new TableLayoutPanel
         {
             Dock = DockStyle.Bottom,
-            Height = 82,
-            Padding = new Padding(18, 0, 18, 18),
+            Height = 56,
+            Padding = new Padding(16, 0, 16, 12),
             ColumnCount = 2,
             RowCount = 2,
             BackColor = Color.FromArgb(255, 252, 248),
         };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
-        footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 88F));
+        footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
+        footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         footer.Controls.Add(_countLabel, 0, 0);
         footer.SetColumnSpan(_countLabel, 2);
         footer.Controls.Add(_progressBar, 0, 1);
