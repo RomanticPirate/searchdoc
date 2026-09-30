@@ -38,6 +38,7 @@ public sealed class MainForm : Form
     private Button _advancedButton = null!;
     private Label _statusLabel = null!;
     private DataGridView _resultsGrid = null!;
+    private Label _noResultsLabel = null!;
     private RichTextBox _previewBox = null!;
     private LinkLabel _previewTitleLabel = null!;
     private LinkLabel _previewMetaLabel = null!;
@@ -450,6 +451,7 @@ public sealed class MainForm : Form
         _resultsGrid.CellPainting += ResultsGridOnCellPainting;
         _resultsGrid.DataError += (_, e) => e.ThrowException = false;
         leftContent.Controls.Add(_resultsGrid);
+        AttachNoResultsLabel(leftContent);
         Program.Log("Grid created");
 
         var rightPanel = BuildPane(out var rightContent);
@@ -883,6 +885,7 @@ public sealed class MainForm : Form
         _resultsGrid.CellPainting += ResultsGridOnCellPainting;
         _resultsGrid.DataError += (_, e) => e.ThrowException = false;
         leftContent.Controls.Add(_resultsGrid);
+        AttachNoResultsLabel(leftContent);
         Program.Log("Detailed grid created");
 
         var rightPanel = BuildPaneWithHeader("미리보기", "", out var rightContent);
@@ -1556,6 +1559,7 @@ public sealed class MainForm : Form
             _statusLabel.Text = $"색인 완료: {_currentIndex.Entries.Count}개 파일";
         }
         _results.Clear();
+        _noResultsLabel.Visible = false;
         ClearPreviewPanel();
         SetBusyState(true);
         _restartRequested = false;
@@ -1612,6 +1616,9 @@ public sealed class MainForm : Form
             var failureCount = _results.Count(static item => item.Status == "실패");
             _statusLabel.Text = $"완료: {successCount}건 성공, {failureCount}건 실패";
 
+            // 검색이 끝났는데 결과가 없을 때만 안내 문구 표시 (최초 실행·대기 상태에서는 숨김)
+            _noResultsLabel.Visible = _results.Count == 0;
+
             if (_results.Count > 0)
             {
                 _resultsGrid.ClearSelection();
@@ -1619,6 +1626,22 @@ public sealed class MainForm : Form
                 _resultsGrid.CurrentCell = _resultsGrid.Rows[0].Cells["FileName"];
             }
         }
+    }
+
+    private void AttachNoResultsLabel(Control host)
+    {
+        _noResultsLabel = new Label
+        {
+            Text = "검색 결과가 없습니다.",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Malgun Gothic", 10F, FontStyle.Regular, GraphicsUnit.Point),
+            ForeColor = Color.FromArgb(156, 140, 146),
+            BackColor = _resultsGrid.BackgroundColor,
+            Visible = false,
+        };
+        host.Controls.Add(_noResultsLabel);
+        _noResultsLabel.BringToFront();
     }
 
     private void SetBusyState(bool busy)
@@ -1640,6 +1663,7 @@ public sealed class MainForm : Form
     private void ClearSearchResultsToIdle()
     {
         _results.Clear();
+        _noResultsLabel.Visible = false;
         ClearPreviewPanel();
         _statusLabel.Text = "대기 중";
     }
