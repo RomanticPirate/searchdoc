@@ -550,7 +550,7 @@ public sealed class DocumentSearcher
             if (searchTarget == SearchTarget.FileName)
             {
                 if (string.IsNullOrWhiteSpace(trimmedKeyword) ||
-                    MatchesAnyToken(fileName, trimmedKeyword))
+                    MatchesAllTokens(fileName, trimmedKeyword))
                 {
                     var snippet = entry.Status == "실패"
                         ? entry.Content
@@ -570,7 +570,7 @@ public sealed class DocumentSearcher
                 }
             }
             else if (string.IsNullOrWhiteSpace(trimmedKeyword) ||
-                     MatchesAnyToken(entry.Content, trimmedKeyword))
+                     MatchesAllTokens(entry.Content, trimmedKeyword))
             {
                 result = new SearchResult(
                     entry.Path,
@@ -607,7 +607,7 @@ public sealed class DocumentSearcher
             if (searchTarget == SearchTarget.FileName)
             {
                 if (string.IsNullOrWhiteSpace(trimmedKeyword) ||
-                    MatchesAnyToken(fileName, trimmedKeyword))
+                    MatchesAllTokens(fileName, trimmedKeyword))
                 {
                     result = new SearchResult(
                         path,
@@ -625,7 +625,7 @@ public sealed class DocumentSearcher
                 {
                     var extraction = extractor(path);
                     if (string.IsNullOrWhiteSpace(trimmedKeyword) ||
-                        MatchesAnyToken(extraction.Text, trimmedKeyword))
+                        MatchesAllTokens(extraction.Text, trimmedKeyword))
                     {
                         result = new SearchResult(
                             path,
@@ -807,18 +807,18 @@ public sealed class DocumentSearcher
         return keyword.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
     }
 
-    // 띄어쓰기로 나뉜 단어 중 하나라도 포함되면 일치 (OR 검색)
-    public static bool MatchesAnyToken(string text, string keyword)
+    // 띄어쓰기로 나뉜 단어가 모두 포함되어야 일치 (AND 검색, 순서 무관)
+    public static bool MatchesAllTokens(string text, string keyword)
     {
         foreach (var token in SplitTokens(keyword))
         {
-            if (text.Contains(token, StringComparison.OrdinalIgnoreCase))
+            if (!text.Contains(token, StringComparison.OrdinalIgnoreCase))
             {
-                return true;
+                return false;
             }
         }
 
-        return false;
+        return true;
     }
 
     public static int FirstTokenIndex(string text, string keyword)

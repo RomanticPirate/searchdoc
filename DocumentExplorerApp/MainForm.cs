@@ -22,18 +22,9 @@ public sealed class MainForm : Form
     private static readonly Color DisabledButtonBackColor = Color.FromArgb(236, 225, 221);
     private static readonly Color DisabledButtonForeColor = Color.FromArgb(156, 140, 146);
 
-    private const string FailureTooltip =
-        "실패 뜻:\n" +
-        "1. 해당 프로그램이 설치되지 않은 구형 문서일 수 있어.\n" +
-        "2. 파일이 잠겨 있거나 손상됐을 수 있어.\n" +
-        "3. 인코딩을 읽지 못한 텍스트 파일일 수 있어.\n" +
-        "4. COM 자동화 중 예외가 발생했을 수 있어.";
-
     private readonly DocumentSearcher _searcher = new();
     private readonly BindingList<SearchResult> _results = [];
     private readonly AppSettings _settings;
-    private readonly Bitmap _failureIcon = CreateFailureIcon();
-    private readonly Bitmap _successIcon = CreateSuccessIcon();
     private readonly ToolTip _paneToolTip = CreatePaneToolTip();
     private readonly Image _infoIconImage = CreateInfoIcon();
     private DocumentIndexData? _currentIndex;
@@ -135,8 +126,6 @@ public sealed class MainForm : Form
     {
         if (disposing)
         {
-            _failureIcon?.Dispose();
-            _successIcon?.Dispose();
             _infoIconImage?.Dispose();
             _paneToolTip?.Dispose();
             _searchCts?.Dispose();
@@ -438,30 +427,9 @@ public sealed class MainForm : Form
         _resultsGrid.DefaultCellStyle.Padding = new Padding(4, 2, 4, 2);
         _resultsGrid.ColumnHeadersVisible = false;
         _resultsGrid.RowTemplate.Height = 28;
-        _resultsGrid.Columns.Add(new DataGridViewImageColumn
-        {
-            Name = "StatusIcon",
-            HeaderText = "",
-            Width = 22,
-            Visible = false,
-            ImageLayout = DataGridViewImageCellLayout.Normal,
-            ValuesAreIcons = false,
-            DefaultCellStyle = new DataGridViewCellStyle
-            {
-                Alignment = DataGridViewContentAlignment.MiddleCenter,
-                NullValue = null,
-                Padding = new Padding(0),
-            },
-        });
         _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            DataPropertyName = nameof(SearchResult.Status),
-            HeaderText = "상태",
-            Width = 70,
-            Visible = false,
-        });
-        _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
-        {
+            Name = "FileName",
             DataPropertyName = nameof(SearchResult.FileName),
             HeaderText = "파일명",
             AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
@@ -469,6 +437,7 @@ public sealed class MainForm : Form
         });
         _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
+            Name = "DirectoryPath",
             DataPropertyName = nameof(SearchResult.DirectoryPath),
             HeaderText = "경로",
             AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
@@ -478,8 +447,6 @@ public sealed class MainForm : Form
         _resultsGrid.SelectionChanged += (_, _) => ShowSelectedPreview();
         _resultsGrid.CellDoubleClick += (_, _) => OpenSelectedFile();
         AttachResultsContextMenu();
-        _resultsGrid.CellFormatting += ResultsGridOnCellFormatting;
-        _resultsGrid.CellToolTipTextNeeded += ResultsGridOnCellToolTipTextNeeded;
         _resultsGrid.CellPainting += ResultsGridOnCellPainting;
         _resultsGrid.DataError += (_, e) => e.ThrowException = false;
         leftContent.Controls.Add(_resultsGrid);
@@ -893,30 +860,9 @@ public sealed class MainForm : Form
         _resultsGrid.ColumnHeadersDefaultCellStyle.BackColor = AccentColor;
         _resultsGrid.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
         _resultsGrid.ColumnHeadersDefaultCellStyle.Font = new Font("Malgun Gothic", 8.5F, FontStyle.Bold, GraphicsUnit.Point);
-        _resultsGrid.Columns.Add(new DataGridViewImageColumn
-        {
-            Name = "StatusIcon",
-            HeaderText = "",
-            Width = 22,
-            Visible = true,
-            ImageLayout = DataGridViewImageCellLayout.Normal,
-            ValuesAreIcons = false,
-            DefaultCellStyle = new DataGridViewCellStyle
-            {
-                Alignment = DataGridViewContentAlignment.MiddleCenter,
-                NullValue = null,
-                Padding = new Padding(0),
-            },
-        });
         _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            DataPropertyName = nameof(SearchResult.Status),
-            HeaderText = "상태",
-            Width = 70,
-            Visible = false,
-        });
-        _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
-        {
+            Name = "FileName",
             DataPropertyName = nameof(SearchResult.FileName),
             HeaderText = "파일명",
             AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
@@ -924,6 +870,7 @@ public sealed class MainForm : Form
         });
         _resultsGrid.Columns.Add(new DataGridViewTextBoxColumn
         {
+            Name = "DirectoryPath",
             DataPropertyName = nameof(SearchResult.DirectoryPath),
             HeaderText = "경로",
             AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
@@ -933,8 +880,6 @@ public sealed class MainForm : Form
         _resultsGrid.SelectionChanged += (_, _) => ShowSelectedPreview();
         _resultsGrid.CellDoubleClick += (_, _) => OpenSelectedFile();
         AttachResultsContextMenu();
-        _resultsGrid.CellFormatting += ResultsGridOnCellFormatting;
-        _resultsGrid.CellToolTipTextNeeded += ResultsGridOnCellToolTipTextNeeded;
         _resultsGrid.CellPainting += ResultsGridOnCellPainting;
         _resultsGrid.DataError += (_, e) => e.ThrowException = false;
         leftContent.Controls.Add(_resultsGrid);
@@ -1169,52 +1114,6 @@ public sealed class MainForm : Form
         using var dotBrush = new SolidBrush(AccentColor);
         graphics.FillEllipse(dotBrush, 7F, 3.5F, 2F, 2F);
         graphics.DrawLine(stemPen, 8F, 7F, 8F, 11F);
-
-        return bitmap;
-    }
-
-    private static Bitmap CreateSuccessIcon()
-    {
-        var bitmap = new Bitmap(12, 12);
-        using var graphics = Graphics.FromImage(bitmap);
-        graphics.Clear(Color.Transparent);
-        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-        using var fillBrush = new SolidBrush(Color.FromArgb(44, 163, 76));
-        graphics.FillEllipse(fillBrush, 0.5F, 0.5F, 11F, 11F);
-
-        using var pen = new Pen(Color.White, 1.6F)
-        {
-            StartCap = System.Drawing.Drawing2D.LineCap.Round,
-            EndCap = System.Drawing.Drawing2D.LineCap.Round,
-        };
-        graphics.DrawLines(pen,
-        [
-            new PointF(3.2F, 6.1F),
-            new PointF(5.1F, 8.1F),
-            new PointF(8.7F, 3.8F),
-        ]);
-
-        return bitmap;
-    }
-
-    private static Bitmap CreateFailureIcon()
-    {
-        var bitmap = new Bitmap(12, 12);
-        using var graphics = Graphics.FromImage(bitmap);
-        graphics.Clear(Color.Transparent);
-        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-        using var fillBrush = new SolidBrush(Color.FromArgb(220, 53, 53));
-        graphics.FillEllipse(fillBrush, 0.5F, 0.5F, 11F, 11F);
-
-        using var pen = new Pen(Color.White, 1.6F)
-        {
-            StartCap = System.Drawing.Drawing2D.LineCap.Round,
-            EndCap = System.Drawing.Drawing2D.LineCap.Round,
-        };
-        graphics.DrawLine(pen, 3.5F, 3.5F, 8.5F, 8.5F);
-        graphics.DrawLine(pen, 8.5F, 3.5F, 3.5F, 8.5F);
 
         return bitmap;
     }
@@ -1717,7 +1616,7 @@ public sealed class MainForm : Form
             {
                 _resultsGrid.ClearSelection();
                 _resultsGrid.Rows[0].Selected = true;
-                _resultsGrid.CurrentCell = _resultsGrid.Rows[0].Cells[2]; // 파일명 컬럼 (index 2, Visible)
+                _resultsGrid.CurrentCell = _resultsGrid.Rows[0].Cells["FileName"];
             }
         }
     }
@@ -1779,15 +1678,16 @@ public sealed class MainForm : Form
 
     private void RefreshResultColumnWidths()
     {
-        if (_resultsGrid.Columns.Count < 4)
+        if (_resultsGrid.Columns["FileName"] is not { } nameColumn ||
+            _resultsGrid.Columns["DirectoryPath"] is not { } pathColumn)
         {
             return;
         }
 
-        _resultsGrid.AutoResizeColumn(2, DataGridViewAutoSizeColumnMode.AllCells);
-        _resultsGrid.AutoResizeColumn(3, DataGridViewAutoSizeColumnMode.AllCells);
-        _resultsGrid.Columns[2].Width = Math.Max(220, _resultsGrid.Columns[2].Width);
-        _resultsGrid.Columns[3].Width = Math.Max(420, _resultsGrid.Columns[3].Width);
+        _resultsGrid.AutoResizeColumn(nameColumn.Index, DataGridViewAutoSizeColumnMode.AllCells);
+        _resultsGrid.AutoResizeColumn(pathColumn.Index, DataGridViewAutoSizeColumnMode.AllCells);
+        nameColumn.Width = Math.Max(220, nameColumn.Width);
+        pathColumn.Width = Math.Max(420, pathColumn.Width);
     }
 
     private static Label CreateFieldLabel(string text)
@@ -2140,51 +2040,6 @@ public sealed class MainForm : Form
                 UseShellExecute = true,
             })?.Dispose();
         }
-    }
-
-    private void ResultsGridOnCellToolTipTextNeeded(object? sender, DataGridViewCellToolTipTextNeededEventArgs e)
-    {
-        if (e.RowIndex < 0 || e.ColumnIndex < 0)
-        {
-            return;
-        }
-
-        var column = _resultsGrid.Columns[e.ColumnIndex];
-        if (column.Name != "StatusIcon" && column.DataPropertyName != nameof(SearchResult.Status))
-        {
-            return;
-        }
-
-        if (_resultsGrid.Rows[e.RowIndex].DataBoundItem is SearchResult result && result.Status == "실패")
-        {
-            e.ToolTipText = FailureTooltip;
-        }
-    }
-
-    private void ResultsGridOnCellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
-    {
-        if (e.RowIndex < 0 || e.ColumnIndex < 0)
-        {
-            return;
-        }
-
-        if (_resultsGrid.Columns[e.ColumnIndex].Name != "StatusIcon")
-        {
-            return;
-        }
-
-        if (_resultsGrid.Rows[e.RowIndex].DataBoundItem is not SearchResult result)
-        {
-            return;
-        }
-
-        e.Value = result.Status switch
-        {
-            "성공" => _successIcon,
-            "실패" => _failureIcon,
-            _ => null,
-        };
-        e.FormattingApplied = true;
     }
 
     private void ResultsGridOnCellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
