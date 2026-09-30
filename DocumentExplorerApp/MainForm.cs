@@ -2066,15 +2066,44 @@ public sealed class MainForm : Form
         }
 
         var fileName = result.FileName;
-        var matchIndex = DocumentSearcher.FirstTokenIndex(fileName, keyword);
-        if (matchIndex < 0)
+
+        // 모든 검색어의 위치를 모아 겹치는 구간은 병합
+        var ranges = new List<(int Start, int End)>();
+        foreach (var token in DocumentSearcher.SplitTokens(keyword))
+        {
+            var from = 0;
+            while (from < fileName.Length)
+            {
+                var found = fileName.IndexOf(token, from, StringComparison.OrdinalIgnoreCase);
+                if (found < 0)
+                {
+                    break;
+                }
+
+                ranges.Add((found, found + token.Length));
+                from = found + token.Length;
+            }
+        }
+
+        if (ranges.Count == 0)
         {
             return;
         }
 
-        var matchLength = DocumentSearcher.SplitTokens(keyword)
-            .Where(t => string.Compare(fileName, matchIndex, t, 0, t.Length, StringComparison.OrdinalIgnoreCase) == 0)
-            .Max(t => t.Length);
+        ranges.Sort();
+        var merged = new List<(int Start, int End)> { ranges[0] };
+        foreach (var range in ranges.Skip(1))
+        {
+            var last = merged[^1];
+            if (range.Start <= last.End)
+            {
+                merged[^1] = (last.Start, Math.Max(last.End, range.End));
+            }
+            else
+            {
+                merged.Add(range);
+            }
+        }
 
         e.PaintBackground(e.CellBounds, e.State.HasFlag(DataGridViewElementStates.Selected));
         e.Paint(e.CellBounds, DataGridViewPaintParts.Border | DataGridViewPaintParts.Focus);
@@ -2083,21 +2112,35 @@ public sealed class MainForm : Form
         var foreColor = e.State.HasFlag(DataGridViewElementStates.Selected) ? e.CellStyle.SelectionForeColor : e.CellStyle.ForeColor;
         var textY = e.CellBounds.Top + ((e.CellBounds.Height - font.Height) / 2);
         var startX = e.CellBounds.Left + 6;
+        var maxSize = new Size(int.MaxValue, int.MaxValue);
 
-        var prefix = fileName[..matchIndex];
-        var matched = fileName.Substring(matchIndex, matchLength);
-        var suffix = fileName[(matchIndex + matchLength)..];
+        int MeasureWidth(string text) => text.Length == 0
+            ? 0
+            : TextRenderer.MeasureText(e.Graphics, text, font, maxSize, TextFormatFlags.NoPadding).Width;
 
-        var prefixSize = TextRenderer.MeasureText(e.Graphics, prefix, font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding);
-        var matchedSize = TextRenderer.MeasureText(e.Graphics, matched, font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding);
-
-        TextRenderer.DrawText(e.Graphics, prefix, font, new Point(startX, textY), foreColor, TextFormatFlags.NoPadding);
-
-        var highlightRect = new Rectangle(startX + prefixSize.Width, textY - 1, matchedSize.Width + 2, font.Height + 2);
         using var highlightBrush = new SolidBrush(Color.Black);
-        e.Graphics.FillRectangle(highlightBrush, highlightRect);
-        TextRenderer.DrawText(e.Graphics, matched, font, new Point(highlightRect.Left + 1, textY), Color.White, TextFormatFlags.NoPadding);
-        TextRenderer.DrawText(e.Graphics, suffix, font, new Point(highlightRect.Right + 1, textY), foreColor, TextFormatFlags.NoPadding);
+        var cursor = 0;
+        var shift = 0; // 하이라이트 박스 여백(2px)만큼 뒤 글자를 밀어줌
+        foreach (var (start, end) in merged)
+        {
+            if (start > cursor)
+            {
+                var plain = fileName[cursor..start];
+                TextRenderer.DrawText(e.Graphics, plain, font, new Point(startX + shift + MeasureWidth(fileName[..cursor]), textY), foreColor, TextFormatFlags.NoPadding);
+            }
+
+            var matched = fileName[start..end];
+            var highlightRect = new Rectangle(startX + shift + MeasureWidth(fileName[..start]), textY - 1, MeasureWidth(matched) + 2, font.Height + 2);
+            e.Graphics.FillRectangle(highlightBrush, highlightRect);
+            TextRenderer.DrawText(e.Graphics, matched, font, new Point(highlightRect.Left + 1, textY), Color.White, TextFormatFlags.NoPadding);
+            cursor = end;
+            shift += 2;
+        }
+
+        if (cursor < fileName.Length)
+        {
+            TextRenderer.DrawText(e.Graphics, fileName[cursor..], font, new Point(startX + shift + MeasureWidth(fileName[..cursor]), textY), foreColor, TextFormatFlags.NoPadding);
+        }
 
         e.Handled = true;
     }
