@@ -1469,8 +1469,14 @@ public sealed class MainForm : Form
             return true;
         }
 
+        // 검색 시 자동 갱신은 팝업 없이 상태줄로만 진행 표시 (전체 재색인일 때만 팝업)
+        var showPopup = forceRebuild || !refreshChangedFiles;
+
         SetBusyState(true);
-        Enabled = false;
+        if (showPopup)
+        {
+            Enabled = false;
+        }
 
         using var popup = new IndexingProgressForm();
         using var indexingCts = new CancellationTokenSource();
@@ -1483,9 +1489,12 @@ public sealed class MainForm : Form
             _statusLabel.Text = "색인을 취소하는 중...";
             indexingCts.Cancel();
         };
-        popup.ShowCenteredOver(this);
-        popup.UpdateProgress(new IndexingProgress(0, 1, string.Empty, false));
-        popup.Refresh();
+        if (showPopup)
+        {
+            popup.ShowCenteredOver(this);
+            popup.UpdateProgress(new IndexingProgress(0, 1, string.Empty, false));
+            popup.Refresh();
+        }
         _statusLabel.Text = "문서 색인 중...";
 
         try
@@ -1493,7 +1502,11 @@ public sealed class MainForm : Form
             var progress = new Progress<IndexingProgress>(item =>
             {
                 if (popupClosed) return;
-                try { popup.UpdateProgress(item); } catch (ObjectDisposedException) { return; }
+                if (showPopup)
+                {
+                    try { popup.UpdateProgress(item); } catch (ObjectDisposedException) { return; }
+                }
+
                 _statusLabel.Text = item.TotalFiles > 0 && item.CurrentFile > 0
                     ? $"{item.CurrentFile} / {item.TotalFiles} 색인 중 {Path.GetFileName(item.CurrentPath)}"
                     : "문서 색인 준비 중...";
@@ -1532,7 +1545,7 @@ public sealed class MainForm : Form
         {
             popupClosed = true;
             Enabled = true;
-            try { popup.Close(); } catch { /* 이미 닫힌 경우 무시 */ }
+            try { if (showPopup) popup.Close(); } catch { /* 이미 닫힌 경우 무시 */ }
             SetBusyState(false);
             _statusLabel.Text = _currentIndex is not null
                 ? $"색인 완료: {_currentIndex.Entries.Count}개 파일"
