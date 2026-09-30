@@ -107,7 +107,7 @@ public sealed class IndexingProgressForm : Form
             Dock = DockStyle.Top,
             Height = 58,
             Padding = new Padding(16, 4, 16, 0),
-            Text = "- 빠른 검색을 위해서 색인 작업이 진행됩니다.\r\n- 최초 검색 폴더를 지정할 때 '1회'만 진행됩니다.\r\n- 이후 변경되는 파일에 대해서만 추가 색인 작업이 진행됩니다.",
+            Text = "- 빠른 검색을 위해서 문서 색인 작업이 진행됩니다.\r\n- 검색 폴더나 확장자를 바꾸면 전체 문서를 새로 색인합니다.\r\n- 이후에는 새로 생기거나 수정된 파일만 추가로 색인합니다.",
             ForeColor = Color.FromArgb(110, 96, 104),
         };
 
