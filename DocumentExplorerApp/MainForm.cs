@@ -1454,7 +1454,7 @@ public sealed class MainForm : Form
         return true;
     }
 
-    private async Task<bool> EnsureIndexReadyAsync(bool forceRebuild)
+    private async Task<bool> EnsureIndexReadyAsync(bool forceRebuild, bool refreshChangedFiles = false)
     {
         var folders = _settings.GetEffectiveFolders();
         var patterns = GetCurrentPatterns();
@@ -1464,7 +1464,7 @@ public sealed class MainForm : Form
             return false;
         }
 
-        if (!forceRebuild && IsCurrentIndexValid(folders, patterns))
+        if (!forceRebuild && !refreshChangedFiles && IsCurrentIndexValid(folders, patterns))
         {
             return true;
         }
@@ -1499,14 +1499,23 @@ public sealed class MainForm : Form
                     : "문서 색인 준비 중...";
             });
 
-            _currentIndex = await Task.Run(() => _searcher.BuildOrUpdateIndex(
+            var previousIndex = forceRebuild ? null : _currentIndex;
+            var updatedIndex = await Task.Run(() => _searcher.BuildOrUpdateIndex(
                 folders,
                 patterns,
-                forceRebuild ? null : _currentIndex,
+                previousIndex,
                 progress,
                 indexingCts.Token));
+            _currentIndex = updatedIndex;
 
-            DocumentIndexStore.Save(_currentIndex);
+            // 바뀐 파일이 없으면(기존 항목을 그대로 재사용) 대용량 색인 파일 저장을 생략
+            var unchanged = previousIndex is not null &&
+                previousIndex.Entries.Count == updatedIndex.Entries.Count &&
+                previousIndex.Entries.Zip(updatedIndex.Entries).All(static pair => ReferenceEquals(pair.First, pair.Second));
+            if (!unchanged)
+            {
+                await Task.Run(() => DocumentIndexStore.Save(updatedIndex));
+            }
             _statusLabel.Text = $"색인 완료: {_currentIndex.Entries.Count}개 파일";
             return true;
         }
@@ -1548,7 +1557,8 @@ public sealed class MainForm : Form
             return;
         }
 
-        var indexed = await EnsureIndexReadyAsync(forceRebuild: !IsCurrentIndexValid(folders, patterns));
+        // 검색할 때마다 새로 생기거나 수정·삭제된 파일을 색인에 반영 (바뀐 파일만 다시 읽음)
+        var indexed = await EnsureIndexReadyAsync(forceRebuild: !IsCurrentIndexValid(folders, patterns), refreshChangedFiles: true);
         if (!indexed)
         {
             return;
