@@ -477,6 +477,7 @@ public sealed class MainForm : Form
         });
         _resultsGrid.SelectionChanged += (_, _) => ShowSelectedPreview();
         _resultsGrid.CellDoubleClick += (_, _) => OpenSelectedFile();
+        AttachResultsContextMenu();
         _resultsGrid.CellFormatting += ResultsGridOnCellFormatting;
         _resultsGrid.CellToolTipTextNeeded += ResultsGridOnCellToolTipTextNeeded;
         _resultsGrid.CellPainting += ResultsGridOnCellPainting;
@@ -931,6 +932,7 @@ public sealed class MainForm : Form
         });
         _resultsGrid.SelectionChanged += (_, _) => ShowSelectedPreview();
         _resultsGrid.CellDoubleClick += (_, _) => OpenSelectedFile();
+        AttachResultsContextMenu();
         _resultsGrid.CellFormatting += ResultsGridOnCellFormatting;
         _resultsGrid.CellToolTipTextNeeded += ResultsGridOnCellToolTipTextNeeded;
         _resultsGrid.CellPainting += ResultsGridOnCellPainting;
@@ -2339,6 +2341,66 @@ public sealed class MainForm : Form
             FileName = result.Path,
             UseShellExecute = true,
         })?.Dispose();
+    }
+
+    private void AttachResultsContextMenu()
+    {
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("파일 열기", null, (_, _) => OpenSelectedFile());
+        menu.Items.Add("파일 경로의 폴더 열기", null, (_, _) => OpenSelectedFileFolder());
+
+        _resultsGrid.CellMouseDown += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Right || e.RowIndex < 0)
+            {
+                return;
+            }
+
+            if (!_resultsGrid.Rows[e.RowIndex].Selected)
+            {
+                _resultsGrid.ClearSelection();
+                _resultsGrid.Rows[e.RowIndex].Selected = true;
+            }
+
+            _resultsGrid.CurrentCell = _resultsGrid.Rows[e.RowIndex].Cells[0];
+            var cursor = _resultsGrid.PointToClient(Cursor.Position);
+            menu.Show(_resultsGrid, cursor);
+        };
+    }
+
+    private void OpenSelectedFileFolder()
+    {
+        var result = GetSelectedResult();
+        if (result is null)
+        {
+            MessageBox.Show(this, "먼저 결과 목록에서 파일을 선택해야 해.", "선택 필요");
+            return;
+        }
+
+        if (File.Exists(result.Path))
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{result.Path}\"",
+                UseShellExecute = true,
+            })?.Dispose();
+            return;
+        }
+
+        var folder = Path.GetDirectoryName(result.Path);
+        if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder))
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{folder}\"",
+                UseShellExecute = true,
+            })?.Dispose();
+            return;
+        }
+
+        MessageBox.Show(this, "파일 또는 폴더를 찾을 수 없어.", "열기 실패");
     }
 
     private void SaveLastFolder(string folder)
