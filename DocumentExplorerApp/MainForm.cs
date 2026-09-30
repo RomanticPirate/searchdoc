@@ -247,13 +247,14 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 2,
+            RowCount = 3,
             Padding = new Padding(8, 4, 8, 4),
             BackColor = AppBackgroundColor,
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F)); // row 0: 검색어
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // row 1: 결과/미리보기
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F)); // row 2: 제작자 표기
         Controls.Add(root);      // Fill: 먼저 추가
         Controls.Add(titleBar);  // Top: 나중 추가 → 상단 공간 먼저 차지
         Program.Log("Root created");
@@ -389,6 +390,15 @@ public sealed class MainForm : Form
             FixedPanel = FixedPanel.None, // 원인7: 자체 비례 조정 허용(ApplyMainSplitRatio가 제어)
         };
         root.Controls.Add(_mainSplit, 0, 1);
+        root.Controls.Add(new Label
+        {
+            Text = "Made by JJW",
+            AutoSize = false,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = MutedTextColor,
+            Font = new Font("Malgun Gothic", 8F, FontStyle.Regular, GraphicsUnit.Point),
+        }, 0, 2);
         _mainSplit.HandleCreated += (_, _) =>
         {
             _mainSplit.Panel1MinSize = 120;
@@ -1066,13 +1076,13 @@ public sealed class MainForm : Form
         };
         var madeByLabel = new Label
         {
-            Text = "Made by NX-JW",
+            Text = "Made by JJW",
             AutoSize = false,
             Width = 120,
             TextAlign = ContentAlignment.MiddleRight,
             Dock = DockStyle.Right,
             ForeColor = MutedTextColor,
-            Font = new Font("Malgun Gothic", 7.5F, FontStyle.Regular, GraphicsUnit.Point),
+            Font = new Font("Malgun Gothic", 8F, FontStyle.Regular, GraphicsUnit.Point),
         };
         statusBarPanel.Controls.Add(_statusLabel);
         statusBarPanel.Controls.Add(madeByLabel);
