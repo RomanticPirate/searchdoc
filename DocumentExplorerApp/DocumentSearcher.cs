@@ -550,7 +550,7 @@ public sealed class DocumentSearcher
             if (searchTarget == SearchTarget.FileName)
             {
                 if (string.IsNullOrWhiteSpace(trimmedKeyword) ||
-                    fileName.Contains(trimmedKeyword, StringComparison.OrdinalIgnoreCase))
+                    MatchesAnyToken(fileName, trimmedKeyword))
                 {
                     var snippet = entry.Status == "실패"
                         ? entry.Content
@@ -570,7 +570,7 @@ public sealed class DocumentSearcher
                 }
             }
             else if (string.IsNullOrWhiteSpace(trimmedKeyword) ||
-                     entry.Content.Contains(trimmedKeyword, StringComparison.OrdinalIgnoreCase))
+                     MatchesAnyToken(entry.Content, trimmedKeyword))
             {
                 result = new SearchResult(
                     entry.Path,
@@ -607,7 +607,7 @@ public sealed class DocumentSearcher
             if (searchTarget == SearchTarget.FileName)
             {
                 if (string.IsNullOrWhiteSpace(trimmedKeyword) ||
-                    fileName.Contains(trimmedKeyword, StringComparison.OrdinalIgnoreCase))
+                    MatchesAnyToken(fileName, trimmedKeyword))
                 {
                     result = new SearchResult(
                         path,
@@ -625,7 +625,7 @@ public sealed class DocumentSearcher
                 {
                     var extraction = extractor(path);
                     if (string.IsNullOrWhiteSpace(trimmedKeyword) ||
-                        extraction.Text.Contains(trimmedKeyword, StringComparison.OrdinalIgnoreCase))
+                        MatchesAnyToken(extraction.Text, trimmedKeyword))
                     {
                         result = new SearchResult(
                             path,
@@ -802,6 +802,40 @@ public sealed class DocumentSearcher
         return $"*.{token}";
     }
 
+    public static string[] SplitTokens(string keyword)
+    {
+        return keyword.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    // 띄어쓰기로 나뉜 단어 중 하나라도 포함되면 일치 (OR 검색)
+    public static bool MatchesAnyToken(string text, string keyword)
+    {
+        foreach (var token in SplitTokens(keyword))
+        {
+            if (text.Contains(token, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static int FirstTokenIndex(string text, string keyword)
+    {
+        var best = -1;
+        foreach (var token in SplitTokens(keyword))
+        {
+            var i = text.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+            if (i >= 0 && (best < 0 || i < best))
+            {
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
     private static string CreateSnippet(string text, string keyword)
     {
         if (string.IsNullOrEmpty(text))
@@ -814,7 +848,7 @@ public sealed class DocumentSearcher
             return text[..Math.Min(text.Length, MaxPreviewChars)];
         }
 
-        var index = text.IndexOf(keyword, StringComparison.OrdinalIgnoreCase);
+        var index = FirstTokenIndex(text, keyword);
         if (index < 0)
         {
             return text[..Math.Min(text.Length, MaxPreviewChars)];

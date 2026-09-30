@@ -133,30 +133,47 @@ public static class PreviewDocumentBuilder
             return matches;
         }
 
-        var indices = new List<int>();
-        var searchIndex = 0;
-        while (searchIndex < content.Length)
+        var found = new List<(int Index, int Length)>();
+        foreach (var token in DocumentSearcher.SplitTokens(keyword))
         {
-            var foundIndex = content.IndexOf(keyword, searchIndex, StringComparison.OrdinalIgnoreCase);
-            if (foundIndex < 0)
+            var searchIndex = 0;
+            while (searchIndex < content.Length)
             {
-                break;
+                var foundIndex = content.IndexOf(token, searchIndex, StringComparison.OrdinalIgnoreCase);
+                if (foundIndex < 0)
+                {
+                    break;
+                }
+
+                found.Add((foundIndex, token.Length));
+                searchIndex = foundIndex + Math.Max(1, token.Length);
+            }
+        }
+
+        found.Sort((a, b) => a.Index != b.Index ? a.Index.CompareTo(b.Index) : b.Length.CompareTo(a.Length));
+        var indices = new List<(int Index, int Length)>();
+        var lastEnd = -1;
+        foreach (var f in found)
+        {
+            if (f.Index < lastEnd)
+            {
+                continue;
             }
 
-            indices.Add(foundIndex);
-            searchIndex = foundIndex + Math.Max(1, keyword.Length);
+            indices.Add(f);
+            lastEnd = f.Index + f.Length;
         }
 
         for (var i = 0; i < indices.Count; i++)
         {
-            var matchIndex = indices[i];
+            var (matchIndex, matchLength) = indices[i];
             matches.Add(new PreviewMatch(
                 matchIndex,
-                keyword.Length,
+                matchLength,
                 i + 1,
                 indices.Count,
                 GetLineNumber(content, matchIndex),
-                CreateSnippetAroundMatch(content, matchIndex, keyword.Length, false)));
+                CreateSnippetAroundMatch(content, matchIndex, matchLength, false)));
         }
 
         return matches;

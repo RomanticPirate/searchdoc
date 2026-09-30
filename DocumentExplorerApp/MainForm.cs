@@ -2211,11 +2211,15 @@ public sealed class MainForm : Form
         }
 
         var fileName = result.FileName;
-        var matchIndex = fileName.IndexOf(keyword, StringComparison.OrdinalIgnoreCase);
+        var matchIndex = DocumentSearcher.FirstTokenIndex(fileName, keyword);
         if (matchIndex < 0)
         {
             return;
         }
+
+        var matchLength = DocumentSearcher.SplitTokens(keyword)
+            .Where(t => string.Compare(fileName, matchIndex, t, 0, t.Length, StringComparison.OrdinalIgnoreCase) == 0)
+            .Max(t => t.Length);
 
         e.PaintBackground(e.CellBounds, e.State.HasFlag(DataGridViewElementStates.Selected));
         e.Paint(e.CellBounds, DataGridViewPaintParts.Border | DataGridViewPaintParts.Focus);
@@ -2226,8 +2230,8 @@ public sealed class MainForm : Form
         var startX = e.CellBounds.Left + 6;
 
         var prefix = fileName[..matchIndex];
-        var matched = fileName.Substring(matchIndex, keyword.Length);
-        var suffix = fileName[(matchIndex + keyword.Length)..];
+        var matched = fileName.Substring(matchIndex, matchLength);
+        var suffix = fileName[(matchIndex + matchLength)..];
 
         var prefixSize = TextRenderer.MeasureText(e.Graphics, prefix, font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding);
         var matchedSize = TextRenderer.MeasureText(e.Graphics, matched, font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding);
@@ -2261,7 +2265,8 @@ public sealed class MainForm : Form
             return;
         }
 
-        var firstMatchIndex = _previewBox.Text.IndexOf(keyword, StringComparison.OrdinalIgnoreCase);
+        var tokens = DocumentSearcher.SplitTokens(keyword);
+        var firstMatchIndex = DocumentSearcher.FirstTokenIndex(_previewBox.Text, keyword);
         var focusedMatchIndex = selectedMatchIndexInPreview >= 0
             ? selectedMatchIndexInPreview
             : firstMatchIndex;
@@ -2271,24 +2276,32 @@ public sealed class MainForm : Form
         _previewBox.SelectionColor = _previewBox.ForeColor;
 
         var source = _previewBox.Text;
-        var index = 0;
-        while (index < source.Length)
+        foreach (var token in tokens)
         {
-            index = source.IndexOf(keyword, index, StringComparison.OrdinalIgnoreCase);
-            if (index < 0)
+            var index = 0;
+            while (index < source.Length)
             {
-                break;
-            }
+                index = source.IndexOf(token, index, StringComparison.OrdinalIgnoreCase);
+                if (index < 0)
+                {
+                    break;
+                }
 
-            _previewBox.Select(index, keyword.Length);
-            _previewBox.SelectionBackColor = Color.Black;
-            _previewBox.SelectionColor = Color.White;
-            index += keyword.Length;
+                _previewBox.Select(index, token.Length);
+                _previewBox.SelectionBackColor = Color.Black;
+                _previewBox.SelectionColor = Color.White;
+                index += token.Length;
+            }
         }
 
         if (focusedMatchIndex >= 0)
         {
-            _previewBox.Select(focusedMatchIndex, keyword.Length);
+            var focusedLength = tokens
+                .Where(t => string.Compare(source, focusedMatchIndex, t, 0, t.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                .Select(t => t.Length)
+                .DefaultIfEmpty(keyword.Length)
+                .Max();
+            _previewBox.Select(focusedMatchIndex, focusedLength);
             _previewBox.SelectionBackColor = AccentColor;
             _previewBox.SelectionColor = Color.White;
 
@@ -2362,7 +2375,14 @@ public sealed class MainForm : Form
                 _resultsGrid.Rows[e.RowIndex].Selected = true;
             }
 
-            _resultsGrid.CurrentCell = _resultsGrid.Rows[e.RowIndex].Cells[0];
+            var visibleCell = _resultsGrid.Rows[e.RowIndex].Cells
+                .Cast<DataGridViewCell>()
+                .FirstOrDefault(c => c.Visible);
+            if (visibleCell is not null)
+            {
+                _resultsGrid.CurrentCell = visibleCell;
+            }
+
             var cursor = _resultsGrid.PointToClient(Cursor.Position);
             menu.Show(_resultsGrid, cursor);
         };
